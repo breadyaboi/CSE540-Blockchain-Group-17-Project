@@ -13,7 +13,7 @@ metadata hash.
 supply chain participants. This system replaces centralized trust with a shared, verifiable
 on-chain record.
 ## Repository Structure
-/
+
 ├── contracts \
 │ └── SupplyChainProvenance.sol # Core smart contract (draft) \
 ├── frontend/ # Web UI (Web3.js integration, in progress) \

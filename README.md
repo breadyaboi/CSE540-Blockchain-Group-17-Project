@@ -112,13 +112,13 @@ npx hardhat node
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-### Testnet (Sepolia)
+### Testnet (Sepolia) (tentative)
 
 ```bash
 npx hardhat run scripts/deploy.js --network sepolia
 ```
 
-> Deployment script (`scripts/deploy.js`) is in progress. A `.env` file with `PRIVATE_KEY` and `ALCHEMY_API_URL` will be required for testnet deployment.
+> Deployment script (`scripts/deploy.js`) is "in progress". A `.env` file with `PRIVATE_KEY` and `ALCHEMY_API_URL` will be required for testnet deployment.
 
 ---
 

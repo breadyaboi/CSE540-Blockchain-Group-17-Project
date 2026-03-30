@@ -58,8 +58,9 @@ node --version   # should show v22.x.x
 ### Step 3 — Clone the repository
 
 ```bash
-git clone -b Evan https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project.git
+mkdir cse540-group17-provenance
 cd cse540-group17-provenance
+git clone -b Evan https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project.git
 ```
 
 ### Step 4 — Install dependencies

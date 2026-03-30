@@ -7,7 +7,7 @@ Alvin Ton · Evan Zhu · Jiayang Xiao · Takeyuki Oshima · Yijin Yang
 
 ## Description
 
-A Solidity smart contract deployed on Ethereum that records an immutable, append-only provenance history for products as they move through a multi-party supply chain. Stakeholders — producers, distributors, retailers, and regulators — each hold a role that governs which contract functions they may call. All key lifecycle events (creation, shipment, storage, delivery, verification) are stored on-chain with actor address, timestamp, and an optional off-chain metadata hash.
+A Solidity smart contract deployed on Ethereum that records an immutable, append-only provenance history for products as they move through a multi-party supply chain. Stakeholders: "producers", "distributors", "retailers", and "regulators". Each hold a role that governs which contract functions they may call. All key lifecycle events (creation, shipment, storage, delivery, verification) are stored on-chain with actor address, timestamp, and an optional off-chain metadata hash.
 
 **Problem addressed:** Fragmented, mutable, and non-interoperable tracking systems across supply chain participants. This system replaces centralized trust with a shared, verifiable on-chain record.
 

@@ -4,7 +4,7 @@ CSE 540 – Group 17 Alvin Ton · Evan Zhu · Jiayang Xiao · Takeyuki Oshima ·
 ## Description
 A Solidity smart contract deployed on Ethereum that records an immutable, append-only
 provenance history for products as they move through a multi-party supply chain.
-Stakeholders — producers, handlers, retailers, and auditors — each hold a role that governs
+Stakeholders: producers, handlers, retailers, and auditors, each hold a role that governs
 which contract functions they may call. All key lifecycle events (creation, shipment, storage,
 delivery) are stored on-chain with actor address, timestamp, and an optional off-chain
 metadata hash.

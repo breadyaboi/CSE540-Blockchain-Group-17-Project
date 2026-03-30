@@ -58,7 +58,7 @@ node --version   # should show v22.x.x
 ### Step 3 — Clone the repository
 
 ```bash
-git clone https://github.com/<org>/cse540-group17-provenance.git
+git clone -b Evan https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project.git
 cd cse540-group17-provenance
 ```
 

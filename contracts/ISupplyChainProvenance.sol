@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/
+/*
  title: ISupplyChainProvenance
  notice: Interface for a blockchain-based supply chain provenance system.
 
@@ -18,7 +18,7 @@ pragma solidity ^0.8.20;
  
  Lifecycle:
    Created -> Shipped -> Stored -> Delivered -> Verified
- /
+ */
 interface ISupplyChainProvenance {
 
 

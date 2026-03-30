@@ -89,7 +89,7 @@ rm -f contracts/Lock.sol test/Lock.js
 npx hardhat compile
 ```
 
-Expected output: `Compiled 2 Solidity files successfully`
+Expected output: `Compiled 1 Solidity files successfully`
 
 ### Step 7 — Run tests
 
@@ -97,7 +97,7 @@ Expected output: `Compiled 2 Solidity files successfully`
 npx hardhat test
 ```
 
-Expected output: `28 passing`
+Expected output: `9 passing`
 
 ---
 

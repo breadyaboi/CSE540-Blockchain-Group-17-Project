@@ -25,7 +25,7 @@ contract SupplyChainProvenance{
 
     }
 
-    function registerProduct(uint256 _productId, string memory _productName, bytes32 _metadataHash, string memory _notes) public 
+    function registerProduct(uint256 _productId, bytes32 _metadataHash, string memory _notes) public 
     {// Creates new product record (block)
         require(hasRole(PRODUCER_ROLE, msg.sender), "Only producer can register product");
         require(products[_productId].productId == 0, "Product already exists");

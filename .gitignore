@@ -1,0 +1,48 @@
+# -----------------------------
+# Node / npm
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# -----------------------------
+# Hardhat / Solidity build files
+# -----------------------------
+artifacts/
+cache/
+typechain/
+coverage/
+coverage.json
+
+# -----------------------------
+# Environment variables / secrets
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# OS generated files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Editor / IDE files
+# -----------------------------
+.vscode/
+.idea/
+
+# -----------------------------
+# Logs
+# -----------------------------
+logs/
+*.log
+
+# -----------------------------
+# Temporary files
+# -----------------------------
+tmp/
+temp/

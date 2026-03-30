@@ -32,21 +32,23 @@ contract SupplyChainProvenance{
         require(_productId != 0, "Product ID cannot be zero");
 
         products[_productId] = Product({
-            productName: _productName,
-            productId: _productId,
-            manufacturer: msg.sender,
-            currentOwner: msg.sender,
-            timestamp: block.timestamp
+            productId:     _productId,
+            currentOwner:  msg.sender,
+            metadataHash:  string(abi.encodePacked(_metadataHash)),
+            currentState:  EventType.Creation,
+            eventCount:    1
         });
 
         // Log initial creation event
         provenanceEvents[_productId].push(ProvenanceEvent({
-            eventType: "CREATED",
-            actor: msg.sender,
-            timestamp: block.timestamp,
-            metadataHash: _metadataHash,
-            notes: _notes
+            eventType:    EventType.Creation,
+            actor:        msg.sender,
+            timestamp:    block.timestamp,
+            metadataHash: string(abi.encodePacked(_metadataHash)),
+            notes:        _notes
         }));
+
+        emit ProductRegistered(_productId, msg.sender, block.timestamp);
     }
 
     function transferCustody(uint256 _productId, address _newOwner, string memory _notes) public 

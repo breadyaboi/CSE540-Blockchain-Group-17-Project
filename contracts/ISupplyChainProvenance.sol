@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/**
+/
  title: ISupplyChainProvenance
  notice: Interface for a blockchain-based supply chain provenance system.
- *
- * This interface defines all data structures, enumerations, events, and
- * function signatures used by the SupplyChainProvenance contract. Separating
- * the interface allows other contracts or systems to interact with the
- * provenance system without depending on implementation details.
- *
- * System overview:
- *   A producer registers a product on-chain. Authorized stakeholders then
- *   transfer custody and update status as the product moves through the
- *   supply chain. Every action is recorded as an append-only ProvenanceRecord,
- *   creating a tamper-resistant history that any party can query.
- *
- * Lifecycle:
- *   Created -> Shipped -> Stored -> Delivered -> Verified
- */
+
+ This interface defines all data structures, enumerations, events, and
+ function signatures used by the SupplyChainProvenance contract. Separating
+ the interface allows other contracts or systems to interact with the
+ provenance system without depending on implementation details.
+ 
+ System overview:
+   A producer registers a product on-chain. Authorized stakeholders then
+   transfer custody and update status as the product moves through the
+   supply chain. Every action is recorded as an append-only ProvenanceRecord,
+   creating a tamper-resistant history that any party can query.
+ 
+ Lifecycle:
+   Created -> Shipped -> Stored -> Delivered -> Verified
+ /
 interface ISupplyChainProvenance {
 
 

@@ -1,0 +1,169 @@
+# Blockchain-Based Supply Chain Provenance System
+
+CSE 540 – Group 17  
+Alvin Ton · Evan Zhu · Jiayang Xiao · Takeyuki Oshima · Yijin Yang
+
+---
+
+## Description
+
+A Solidity smart contract deployed on Ethereum that records an immutable, append-only provenance history for products as they move through a multi-party supply chain. Stakeholders — producers, distributors, retailers, and regulators — each hold a role that governs which contract functions they may call. All key lifecycle events (creation, shipment, storage, delivery, verification) are stored on-chain with actor address, timestamp, and an optional off-chain metadata hash.
+
+**Problem addressed:** Fragmented, mutable, and non-interoperable tracking systems across supply chain participants. This system replaces centralized trust with a shared, verifiable on-chain record.
+
+---
+
+## Repository Structure
+
+```
+/
+├── contracts/
+│   ├── ISupplyChainProvenance.sol   # Interface: enums, structs, events
+│   └── SupplyChainProvenance.sol    # Core smart contract implementation
+├── test/
+│   └── test.js                      # Hardhat unit tests
+├── README.md
+└── package.json
+```
+
+---
+
+## Requirements
+
+| Tool    | Version    | Notes                                   |
+|---------|------------|-----------------------------------------|
+| Node.js | 22.x (LTS) | Required — Hardhat 2 does not support Node 20 |
+| npm     | >= 10.x    | Comes with Node.js                      |
+| nvm     | any        | Recommended for managing Node versions  |
+
+---
+
+## Setup & Installation
+
+### Step 1 — Install nvm (if not already installed)
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+```
+
+### Step 2 — Install Node.js 22
+
+```bash
+nvm install 22
+nvm use 22
+node --version   # should show v22.x.x
+```
+
+### Step 3 — Clone the repository
+
+```bash
+git clone https://github.com/<org>/cse540-group17-provenance.git
+cd cse540-group17-provenance
+```
+
+### Step 4 — Install dependencies
+
+```bash
+npm init -y
+npm install --save-dev hardhat@2.22.0
+npm install --save-dev "@nomicfoundation/hardhat-toolbox@hh2"
+```
+
+### Step 5 — Initialize Hardhat (first time only)
+
+```bash
+npx hardhat init
+```
+
+Select **Create a JavaScript project** and accept the defaults. Then remove the sample files Hardhat generates:
+
+```bash
+rm -f contracts/Lock.sol test/Lock.js
+```
+
+### Step 6 — Compile the contracts
+
+```bash
+npx hardhat compile
+```
+
+Expected output: `Compiled 2 Solidity files successfully`
+
+### Step 7 — Run tests
+
+```bash
+npx hardhat test
+```
+
+Expected output: `28 passing`
+
+---
+
+## Deployment (Draft)
+
+### Local Hardhat Network
+
+```bash
+npx hardhat node
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+### Testnet (Sepolia)
+
+```bash
+npx hardhat run scripts/deploy.js --network sepolia
+```
+
+> Deployment script (`scripts/deploy.js`) is in progress. A `.env` file with `PRIVATE_KEY` and `ALCHEMY_API_URL` will be required for testnet deployment.
+
+---
+
+## Smart Contract Overview
+
+### Lifecycle
+
+```
+Created → Shipped → Stored → Delivered → Verified
+```
+
+### Roles
+
+| Role        | Permissions                       |
+|-------------|-----------------------------------|
+| Owner/Admin | Assign and revoke roles           |
+| Producer    | Register products                 |
+| Distributor | Transfer custody, update status   |
+| Retailer    | Confirm delivery via updateStatus |
+| Regulator   | Verify product after delivery     |
+
+### Key Functions
+
+| Function | Caller | Description |
+|----------|--------|-------------|
+| `assignRole(address, Role)` | Owner | Assign a role to a stakeholder |
+| `registerProduct(productId, metadataHash)` | Producer | Create initial on-chain product record |
+| `transferCustody(productId, newCustodian, details)` | Current custodian | Hand off custody to next party |
+| `updateStatus(productId, newStatus, details)` | Current custodian | Advance product lifecycle state |
+| `verifyProduct(productId, details)` | Regulator | Mark product as verified after delivery |
+| `getProduct(productId)` | Anyone | Return current product record |
+| `getProvenanceHistory(productId)` | Anyone | Return full event history array |
+| `getRole(address)` | Anyone | Return role assigned to an address |
+
+---
+
+## Team Role Mapping
+
+| Member          | Contract Responsibility                                                       |
+|-----------------|-------------------------------------------------------------------------------|
+| Evan Zhu        | Core transaction logic (`registerProduct`, `transferCustody`, `updateStatus`) |
+| Jiayang Xiao    | Data structures (`Product`, `ProvenanceRecord` structs, lifecycle model)      |
+| Takeyuki Oshima | Transaction flow and state transition validation (`_isValidTransition`)       |
+| Yijin Yang      | RBAC design (role modifiers, `assignRole`)                                    |
+| Alvin Ton       | Stakeholder interface design (`verifyProduct`, UI interaction spec)           |
+
+---
+
+## Status
+
+Draft submission for Week 2. Core contract signatures, data structures, and unit tests are complete. Frontend integration and deployment scripts are in progress per the project timeline.

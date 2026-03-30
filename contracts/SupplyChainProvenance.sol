@@ -1,44 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../utils/node_modules/@openzeppelin/contracts/access/AccessControl.sol";
+import "contracts/DataStructures.sol";
 
-contract SupplyChainProvenance is AccessControl {
+contract SupplyChainProvenance{
 
     // Roles
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant PRODUCER_ROLE = keccak256("PRODUCER_ROLE");
-    bytes32 public constant HANDLER_ROLE = keccak256("HANDLER_ROLE");
-    bytes32 public constant RETAILER_ROLE = keccak256("RETAILER_ROLE");
-    bytes32 public constant AUDITOR_ROLE = keccak256("AUDITOR_ROLE");
-
-    constructor() {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender); // default admin
-        _grantRole(ADMIN_ROLE, msg.sender);         // custom admin role
-    }
-
-    // Product block
-    struct Product {
-        string productName;
-        uint256 productId;
-        address manufacturer;
-        address currentOwner;
-        uint256 timestamp;
-    }
-
-    // Event block
-    struct ProvenanceEvent {
-        string eventType;
-        address actor;
-        uint256 timestamp;
-        bytes32 metadataHash;
-        string notes;
-    }
-
-    // Storage mappings
-    mapping(uint256 => Product) public products;
-    mapping(uint256 => ProvenanceEvent[]) public provenanceEvents;
-
 
     function grantRoleTo(address account, bytes32 role) public 
     {
@@ -81,12 +48,11 @@ contract SupplyChainProvenance is AccessControl {
     {
       
     }
-
     function confirmDelivery(uint256 _productId, bytes32 _metadataHash, string memory _notes) public 
     {
    
     }
-    function getProvenance(uint256 _productId) public view returns (ProvenanceEvent[] memory) 
+    function getProvenance(uint256 _productId) public view returns (ProvenanceEvent[] memory events) 
     {
  
     }

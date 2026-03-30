@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title ISupplyChainProvenance
- * @notice Interface for a blockchain-based supply chain provenance system.
+ title: ISupplyChainProvenance
+ notice: Interface for a blockchain-based supply chain provenance system.
  *
  * This interface defines all data structures, enumerations, events, and
  * function signatures used by the SupplyChainProvenance contract. Separating
@@ -21,9 +21,8 @@ pragma solidity ^0.8.20;
  */
 interface ISupplyChainProvenance {
 
-    // -------------------------------------------------------------------------
-    // Enumerations
-    // -------------------------------------------------------------------------
+
+    // ********** Enumerations **********
 
     /**
      * @notice Roles that stakeholders may hold in the supply chain.

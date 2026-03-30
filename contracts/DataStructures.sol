@@ -9,10 +9,13 @@ contract DataStructures {
     // =========================
     // Roles (for access control)
     // =========================
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN");
     bytes32 public constant PRODUCER_ROLE = keccak256("PRODUCER");
-    bytes32 public constant DISTRIBUTOR_ROLE = keccak256("DISTRIBUTOR");
     bytes32 public constant RETAILER_ROLE = keccak256("RETAILER");
-
+    bytes32 public constant HANDLER_ROLE = keccak256("HANDLER");
+    bytes32 public constant AUDITOR_ROLE = keccak256("AUDITOR");
+    bytes32 public constant CONSUMER_ROLE = keccak256("CONSUMER");
+    
     mapping(address => mapping(bytes32 => bool)) internal roles;
 
     function hasRole(bytes32 role, address account) internal view returns (bool) {

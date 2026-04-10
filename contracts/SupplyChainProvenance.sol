@@ -1,130 +1,199 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "contracts/DataStructures.sol";
+import "./ISupplyChainProvenance.sol";
 
-contract SupplyChainProvenance{
+/// @title SupplyChainProvenance
+/// @notice Draft smart contract for tracking product provenance across a supply chain.
+/// @dev Current version focuses on structure, interfaces, transaction flow, and high-level validation rather than complete functionality.
+contract SupplyChainProvenance is ISupplyChainProvenance {
+    /// @notice Simple admin model for the draft: deployer manages initial role assignment.
+    address public owner;
 
-    /// @notice Emitted when a new product is registered on-chain
-    event ProductRegistered(uint256 indexed productId, address indexed producer, uint256 timestamp);
+    /// @notice Stores the role assigned to each address.
+    mapping(address => Role) private roles;
 
-    /// @notice Emitted when custody of a product changes hands
-    event CustodyTransferred(uint256 indexed productId, address indexed from, address indexed to, uint256 timestamp);
+    /// @notice Stores product records by product ID.
+    mapping(uint256 => Product) private products;
 
-    /// @notice Emitted when a status update is appended to provenance history
-    event StatusUpdated(uint256 indexed productId, string eventType, address indexed actor, uint256 timestamp);
+    /// @notice Stores provenance history for each product.
+    mapping(uint256 => ProvenanceRecord[]) private histories;
 
-    // Roles
-
-    function grantRoleTo(address account, bytes32 role) public 
-    {
-
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
     }
 
-    function revokeRoleFrom(address account, bytes32 role) public {
-
+    modifier productExists(uint256 productId) {
+        require(products[productId].exists, "Product not found");
+        _;
     }
 
-    function registerProduct(uint256 _productId, bytes32 _metadataHash, string memory _notes) public 
-    {// Creates new product record (block)
-        require(hasRole(PRODUCER_ROLE, msg.sender), "Only producer can register product");
-        require(products[_productId].productId == 0, "Product already exists");
-        require(_productId != 0, "Product ID cannot be zero");
+    constructor() {
+        owner = msg.sender;
+    }
 
-        products[_productId] = Product({
-            productId:     _productId,
-            currentOwner:  msg.sender,
-            metadataHash:  string(abi.encodePacked(_metadataHash)),
-            currentState:  EventType.Creation,
-            eventCount:    1
+    /// @inheritdoc ISupplyChainProvenance
+    /// @dev Role assignment is simplified for the draft milestone.
+    function assignRole(address account, Role role) external override onlyOwner {
+        require(account != address(0), "Invalid account");
+        require(role != Role.None, "Invalid role");
+
+        roles[account] = role;
+        emit RoleAssigned(account, role);
+    }
+
+    /// @inheritdoc ISupplyChainProvenance
+    /// @dev Producers create the first on-chain record for a product.
+    function registerProduct(
+        uint256 productId,
+        string calldata metadataHash
+    ) external override {
+        require(roles[msg.sender] == Role.Producer, "Only producer");
+        require(!products[productId].exists, "Duplicate product");
+        require(bytes(metadataHash).length > 0, "Metadata required");
+
+        products[productId] = Product({
+            productId: productId,
+            metadataHash: metadataHash,
+            currentCustodian: msg.sender,
+            status: ProductStatus.Created,
+            exists: true
         });
 
-        // Log initial creation event
-        provenanceEvents[_productId].push(ProvenanceEvent({
-            eventType:    EventType.Creation,
-            actor:        msg.sender,
-            timestamp:    block.timestamp,
-            metadataHash: string(abi.encodePacked(_metadataHash)),
-            notes:        _notes
-        }));
-
-        emit ProductRegistered(_productId, msg.sender, block.timestamp);
-    }
-
-    function transferCustody(uint256 _productId, address _newOwner, string memory _notes) public 
-    {
-        //changes custody of product to different owner/role
-        // Product must exist before custody can be transferred
-        require(products[_productId].productId != 0, "Product does not exist");
-        require(products[_productId].currentOwner == msg.sender, "Caller is not the current owner");
-        require(_newOwner != address(0), "Invalid new owner address");
-        require(_newOwner != msg.sender, "Cannot transfer to yourself");
-
-        address previousOwner = products[_productId].currentOwner;
-
-        products[_productId].currentOwner = _newOwner;
-        products[_productId].currentState = EventType.Shipment;
-        products[_productId].eventCount   += 1;
-
-        provenanceHistory[_productId].push(ProvenanceEvent({
-            eventType:    EventType.Shipment,
-            actor:        msg.sender,
-            timestamp:    block.timestamp,
-            metadataHash: "",
-            notes:        _notes
-        }));
-
-        emit CustodyTransferred(_productId, previousOwner, _newOwner, block.timestamp);
-    }
-
-    function updateStatus(uint256 _productId, string memory _eventType, bytes32 _metadataHash, string memory _notes) public 
-    {
-        // Product must exist
-        require(products[_productId].productId != 0, "Product does not exist");
-        require(products[_productId].currentOwner == msg.sender, "Caller is not the current custodian");
-        require(
-            keccak256(bytes(_eventType)) != keccak256(bytes("CREATED")),
-            "Use registerProduct() for creation events"
-        );
-        require(
-            keccak256(bytes(_eventType)) != keccak256(bytes("DELIVERED")),
-            "Use confirmDelivery() for delivery events"
+        histories[productId].push(
+            ProvenanceRecord({
+                timestamp: block.timestamp,
+                actor: msg.sender,
+                action: "REGISTER",
+                details: metadataHash
+            })
         );
 
-        EventType evType = EventType.Storage;
-        if (keccak256(bytes(_eventType)) == keccak256(bytes("SHIPPED"))) {
-            evType = EventType.Shipment;
+        emit ProductRegistered(productId, msg.sender, metadataHash);
+    }
+
+    /// @inheritdoc ISupplyChainProvenance
+    /// @dev Current custodian transfers responsibility to another known stakeholder.
+    function transferCustody(
+        uint256 productId,
+        address newCustodian,
+        string calldata details
+    ) external override productExists(productId) {
+        Product storage p = products[productId];
+
+        require(msg.sender == p.currentCustodian, "Only current custodian");
+        require(newCustodian != address(0), "Invalid custodian");
+        require(roles[newCustodian] != Role.None, "Unassigned recipient");
+
+        address previousCustodian = p.currentCustodian;
+        p.currentCustodian = newCustodian;
+
+        histories[productId].push(
+            ProvenanceRecord({
+                timestamp: block.timestamp,
+                actor: msg.sender,
+                action: "TRANSFER_CUSTODY",
+                details: details
+            })
+        );
+
+        emit CustodyTransferred(productId, previousCustodian, newCustodian);
+    }
+
+    /// @inheritdoc ISupplyChainProvenance
+    /// @dev This function reflects Takeyuki's transaction-flow/validation responsibility:
+    /// it records state changes and enforces a simple allowed progression.
+    function updateStatus(
+        uint256 productId,
+        ProductStatus newStatus,
+        string calldata details
+    ) external override productExists(productId) {
+        Product storage p = products[productId];
+
+        require(msg.sender == p.currentCustodian, "Only current custodian");
+        require(_isValidTransition(p.status, newStatus), "Invalid transition");
+
+        p.status = newStatus;
+
+        histories[productId].push(
+            ProvenanceRecord({
+                timestamp: block.timestamp,
+                actor: msg.sender,
+                action: "UPDATE_STATUS",
+                details: details
+            })
+        );
+
+        emit StatusUpdated(productId, newStatus, msg.sender, details);
+    }
+
+    /// @inheritdoc ISupplyChainProvenance
+    /// @dev Regulator verifies the product after major provenance events are recorded.
+    function verifyProduct(
+        uint256 productId,
+        string calldata details
+    ) external override productExists(productId) {
+        require(roles[msg.sender] == Role.Regulator, "Only regulator");
+        require(
+            products[productId].status == ProductStatus.Delivered,
+            "Must be delivered first"
+        );
+
+        products[productId].status = ProductStatus.Verified;
+
+        histories[productId].push(
+            ProvenanceRecord({
+                timestamp: block.timestamp,
+                actor: msg.sender,
+                action: "VERIFY_PRODUCT",
+                details: details
+            })
+        );
+
+        emit ProductVerified(productId, msg.sender, details);
+    }
+
+    /// @notice Validates simplified lifecycle transitions for the draft.
+    /// @dev This can be expanded later if the team adds more detailed workflow rules.
+    function _isValidTransition(
+        ProductStatus currentStatus,
+        ProductStatus newStatus
+    ) internal pure returns (bool) {
+        if (currentStatus == ProductStatus.Created && newStatus == ProductStatus.Shipped) {
+            return true;
         }
-
-        products[_productId].currentState = evType;
-        products[_productId].eventCount   += 1;
-
-        provenanceHistory[_productId].push(ProvenanceEvent({
-            eventType:    evType,
-            actor:        msg.sender,
-            timestamp:    block.timestamp,
-            metadataHash: string(abi.encodePacked(_metadataHash)),
-            notes:        _notes
-        }));
-
-        emit StatusUpdated(_productId, _eventType, msg.sender, block.timestamp);
-    }
-    function confirmDelivery(uint256 _productId, bytes32 _metadataHash, string memory _notes) public 
-    {
-   
-    }
-    function getProvenance(uint256 _productId) public view returns (ProvenanceEvent[] memory events) 
-    {
- 
+        if (currentStatus == ProductStatus.Shipped && newStatus == ProductStatus.Stored) {
+            return true;
+        }
+        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.Delivered) {
+            return true;
+        }
+        return false;
     }
 
-    function getProductInfo(uint256 _productId) public view returns (string memory name, uint256 id, address manufacturer, address currentOwner, uint256 timestamp, uint256 eventCount) 
+    /// @inheritdoc ISupplyChainProvenance
+    function getProduct(uint256 productId)
+        external
+        view
+        override
+        returns (Product memory)
     {
+        return products[productId];
+    }
 
-    }   
-
-    function getEventAt(uint256 _productId, uint256 index) public view returns (string memory eventType, address actor, uint256 timestamp, bytes32 metadataHash, string memory notes) 
+    /// @inheritdoc ISupplyChainProvenance
+    function getProvenanceHistory(uint256 productId)
+        external
+        view
+        override
+        returns (ProvenanceRecord[] memory)
     {
+        return histories[productId];
+    }
 
+    /// @inheritdoc ISupplyChainProvenance
+    function getRole(address account) external view override returns (Role) {
+        return roles[account];
     }
 }

@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.15",
-    "hardhat": "^3.2.0",
+    "hardhat": "^3.3.0",
     "typescript": "~5.8.0"
   },
   "scripts": {
@@ -46,5 +46,13 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project.git"
+  },
+  "bugs": {
+    "url": "https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project/issues"
+  },
+  "homepage": "https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project#readme"
 }

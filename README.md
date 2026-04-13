@@ -169,4 +169,7 @@ Created → Shipped → Stored → Delivered → Verified
 
 ## Status
 
-Draft submission for Week 2. Core contract signatures, data structures, and unit tests are complete. Frontend integration and deployment scripts are in progress per the project timeline.
+Run Demo: 
+```
+npx hardhat run scripts/demo.js
+```

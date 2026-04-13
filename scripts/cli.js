@@ -45,28 +45,44 @@ function normalizeAddress(value) {
   return value.trim().toLowerCase();
 }
 
-function participantLabelForAddress(env, address) {
-  const normalized = normalizeAddress(address);
-  const participants = [
-    ["owner", env.owner.address],
-    ["producer", env.producer.address],
-    ["distributor", env.distributor.address],
-    ["retailer", env.retailer.address],
-    ["regulator", env.regulator.address],
-    ["viewer", env.viewer.address],
+function participantDefinitions(env) {
+  return [
+    { key: "owner", name: "System Admin", address: env.owner.address },
+    { key: "producer", name: "Sunrise Farms", address: env.producer.address },
+    { key: "distributor", name: "BlueLine Logistics", address: env.distributor.address },
+    { key: "retailer", name: "Metro Market", address: env.retailer.address },
+    { key: "regulator", name: "Food Safety Office", address: env.regulator.address },
+    { key: "viewer", name: "Public Viewer", address: env.viewer.address },
   ];
+}
 
-  const match = participants.find(([, participantAddress]) => normalizeAddress(participantAddress) === normalized);
-  return match ? match[0] : null;
+function participantDefinitionForAddress(env, address) {
+  const normalized = normalizeAddress(address);
+  return (
+    participantDefinitions(env).find(
+      (participant) => normalizeAddress(participant.address) === normalized
+    ) ?? null
+  );
+}
+
+async function participantDisplayName(env, participant) {
+  const onChainRole = await env.contract.getRole(participant.address);
+  const roleLabel = participant.key === "owner" ? "Owner/Admin" : roleName(onChainRole);
+  return `${participant.name} (${roleLabel})`;
+}
+
+function participantLabelForAddress(env, address) {
+  const participant = participantDefinitionForAddress(env, address);
+  return participant;
 }
 
 async function formatActor(env, address) {
-  const label = participantLabelForAddress(env, address);
-  if (label) return `${label} (${short(address)})`;
+  const participant = participantDefinitionForAddress(env, address);
+  if (participant) return `${await participantDisplayName(env, participant)} [${short(address)}]`;
 
   const role = await env.contract.getRole(address);
   const roleLabel = roleName(role);
-  return `${roleLabel} (${short(address)})`;
+  return `${roleLabel} [${short(address)}]`;
 }
 
 function bold(text) {
@@ -121,7 +137,7 @@ async function askMenuChoice(rl, validChoices) {
   while (true) {
     const raw = await safeQuestion(rl, "\nSelect an option: ");
     if (raw === null) return null;
-    const answer = raw.trim();
+    const answer = raw.trim().toLowerCase();
     if (validChoices.includes(answer)) return answer;
     console.log(`Invalid choice. Valid options: ${validChoices.join(", ")}`);
   }
@@ -217,25 +233,20 @@ async function printHeader(env) {
 
 async function showParticipants(env) {
   printSectionTitle("Participants");
-  for (const [label, signer] of [
-    ["owner", env.owner],
-    ["producer", env.producer],
-    ["distributor", env.distributor],
-    ["retailer", env.retailer],
-    ["regulator", env.regulator],
-    ["viewer", env.viewer],
-  ]) {
-    const assignedRole = await env.contract.getRole(signer.address);
+  for (const participant of participantDefinitions(env)) {
+    const assignedRole = await env.contract.getRole(participant.address);
+    const displayName = await participantDisplayName(env, participant);
     console.log(
-      `  ${label.padEnd(11)} ${signer.address} role=${roleName(assignedRole)}`
+      `  ${displayName} ${participant.address} role=${roleName(assignedRole)}`
     );
   }
 }
 
 async function showWhoAmI(env) {
   const onChainRole = await env.contract.getRole(env.currentSigner.address);
+  const participant = participantDefinitionForAddress(env, env.currentSigner.address);
   printSectionTitle("Current Session");
-  console.log(`  label: ${env.currentLabel}`);
+  console.log(`  participant: ${participant ? await participantDisplayName(env, participant) : env.currentLabel}`);
   console.log(`  address: ${env.currentSigner.address}`);
   console.log(`  on-chain role: ${roleName(onChainRole)}`);
   console.log(`  is owner: ${normalizeAddress(env.currentSigner.address) === normalizeAddress(env.owner.address)}`);
@@ -271,7 +282,11 @@ async function showHistory(env, productId) {
   history.forEach((record, index) => {
     const ts = new Date(Number(record.timestamp) * 1000).toISOString();
     console.log(
-      `  #${index + 1} ${ts} actor=${participantLabelForAddress(env, record.actor) ?? short(record.actor)} action=${record.action} details=${record.details}`
+      `  #${index + 1} ${ts} actor=${
+        participantLabelForAddress(env, record.actor)
+          ? participantLabelForAddress(env, record.actor).name
+          : short(record.actor)
+      } action=${record.action} details=${record.details}`
     );
   });
 }
@@ -370,8 +385,9 @@ async function handleSwitchSigner(env, rl) {
   const [label, signer] = selected;
   env.currentLabel = label;
   env.currentSigner = signer;
+  const participant = participantDefinitionForAddress(env, signer.address);
   printSectionTitle("Active Signer Updated");
-  console.log(`  ${label} (${signer.address})`);
+  console.log(`  ${participant ? await participantDisplayName(env, participant) : label} (${signer.address})`);
   return true;
 }
 
@@ -479,7 +495,14 @@ async function handleViewMyProducts(env) {
       (product) =>
         normalizeAddress(product.currentCustodian) === normalizeAddress(env.currentSigner.address)
     );
-    await printProductList(env, `Products currently held by ${env.currentLabel}`, myProducts);
+    const participant = participantDefinitionForAddress(env, env.currentSigner.address);
+    await printProductList(
+      env,
+      `Products currently held by ${
+        participant ? await participantDisplayName(env, participant) : env.currentLabel
+      }`,
+      myProducts
+    );
   } catch (error) {
     printSectionTitle("Unable To Load Your Products");
     console.log(`  ${parseError(error)}`);
@@ -525,8 +548,13 @@ async function handleViewPendingActions(env) {
     const pendingProducts = allProducts.filter((product) =>
       matchesPendingAction(role, product, env.currentSigner.address)
     );
+    const participant = participantDefinitionForAddress(env, env.currentSigner.address);
 
-    printSectionTitle(`Pending Actions For ${env.currentLabel}`);
+    printSectionTitle(
+      `Pending Actions For ${
+        participant ? await participantDisplayName(env, participant) : env.currentLabel
+      }`
+    );
     console.log(`  role: ${roleName(role)}`);
     console.log(`  summary: ${pendingActionDescription(role)}`);
     console.log(`  count: ${pendingProducts.length}`);
@@ -600,21 +628,21 @@ async function handleReset(env) {
 
 function printMenu() {
   printSectionTitle("Menu");
-  console.log("  1. Show participants and roles");
-  console.log("  2. Assign default roles");
-  console.log("  3. Switch active signer");
-  console.log("  4. Register product");
-  console.log("  5. Transfer custody");
-  console.log("  6. Update status");
-  console.log("  7. Verify product");
-  console.log("  8. View product");
-  console.log("  9. View provenance history");
-  console.log("  10. View all products");
-  console.log("  11. View my products");
-  console.log("  12. View pending actions");
-  console.log("  13. Run full demo lifecycle");
-  console.log("  14. Reset environment");
-  console.log("  0. Exit");
+  console.log("  1. Show participants and roles      alias: show, sh");
+  console.log("  2. Assign default roles             alias: assign, as");
+  console.log("  3. Switch active signer             alias: switch, sw");
+  console.log("  4. Register product                 alias: register, reg");
+  console.log("  5. Transfer custody                 alias: transfer, tr");
+  console.log("  6. Update status                    alias: update, upd");
+  console.log("  7. Verify product                   alias: verify, ver");
+  console.log("  8. View product                     alias: product, prd");
+  console.log("  9. View provenance history          alias: history, his");
+  console.log("  10. View all products               alias: all, a");
+  console.log("  11. View my products                alias: mine, m");
+  console.log("  12. View pending actions            alias: pending, pen");
+  console.log("  13. Run full demo lifecycle         alias: demo, d");
+  console.log("  14. Reset environment               alias: reset, rs");
+  console.log("  0. Exit                             alias: exit, q");
 }
 
 async function main() {
@@ -645,6 +673,36 @@ async function main() {
         "12",
         "13",
         "14",
+        "show",
+        "sh",
+        "assign",
+        "as",
+        "switch",
+        "sw",
+        "register",
+        "reg",
+        "transfer",
+        "tr",
+        "update",
+        "upd",
+        "verify",
+        "ver",
+        "product",
+        "prd",
+        "history",
+        "his",
+        "all",
+        "a",
+        "mine",
+        "m",
+        "pending",
+        "pen",
+        "demo",
+        "d",
+        "reset",
+        "rs",
+        "exit",
+        "q",
         "whoami",
       ]);
       await printHeader(env);
@@ -654,25 +712,25 @@ async function main() {
         break;
       }
 
-      if (choice === "0") {
+      if (choice === "0" || choice === "exit" || choice === "q") {
         console.log("\nExiting CLI.");
         break;
       }
 
-      if (choice === "1") await showParticipants(env);
-      if (choice === "2") await handleAssignDefaultRoles(env);
-      if (choice === "3") await handleSwitchSigner(env, rl);
-      if (choice === "4") await handleRegisterProduct(env, rl);
-      if (choice === "5") await handleTransferCustody(env, rl);
-      if (choice === "6") await handleUpdateStatus(env, rl);
-      if (choice === "7") await handleVerifyProduct(env, rl);
-      if (choice === "8") await handleViewProduct(env, rl);
-      if (choice === "9") await handleViewHistory(env, rl);
-      if (choice === "10") await handleViewAllProducts(env);
-      if (choice === "11") await handleViewMyProducts(env);
-      if (choice === "12") await handleViewPendingActions(env);
-      if (choice === "13") await handleRunFullDemo(env);
-      if (choice === "14") await handleReset(env);
+      if (choice === "1" || choice === "show" || choice === "sh") await showParticipants(env);
+      if (choice === "2" || choice === "assign" || choice === "as") await handleAssignDefaultRoles(env);
+      if (choice === "3" || choice === "switch" || choice === "sw") await handleSwitchSigner(env, rl);
+      if (choice === "4" || choice === "register" || choice === "reg") await handleRegisterProduct(env, rl);
+      if (choice === "5" || choice === "transfer" || choice === "tr") await handleTransferCustody(env, rl);
+      if (choice === "6" || choice === "update" || choice === "upd") await handleUpdateStatus(env, rl);
+      if (choice === "7" || choice === "verify" || choice === "ver") await handleVerifyProduct(env, rl);
+      if (choice === "8" || choice === "product" || choice === "prd") await handleViewProduct(env, rl);
+      if (choice === "9" || choice === "history" || choice === "his") await handleViewHistory(env, rl);
+      if (choice === "10" || choice === "all" || choice === "a") await handleViewAllProducts(env);
+      if (choice === "11" || choice === "mine" || choice === "m") await handleViewMyProducts(env);
+      if (choice === "12" || choice === "pending" || choice === "pen") await handleViewPendingActions(env);
+      if (choice === "13" || choice === "demo" || choice === "d") await handleRunFullDemo(env);
+      if (choice === "14" || choice === "reset" || choice === "rs") await handleReset(env);
       if (choice === "whoami") await showWhoAmI(env);
     }
   } finally {

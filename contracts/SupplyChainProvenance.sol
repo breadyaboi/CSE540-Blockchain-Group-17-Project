@@ -9,12 +9,12 @@ import "./ISupplyChainProvenance.sol";
 // The basic flow is:
 //   1. Owner assigns roles to stakeholder addresses
 //   2. Producer registers a product
-//   3. Producer packs it and hands off to logistics
-//   4. Logistics transports it to a warehouse
-//   5. Warehouse stores it and releases it for final-mile delivery
-//   6. Logistics delivers it to a retailer
-//   7. Regulator verifies the product
-//   6. Anyone can query the full history at any point
+//   3. Producer certifies and prepares it for shipment
+//   4. Logistics transports it and hands off to warehouse
+//   5. Warehouse stores it and releases it to retailer
+//   6. Retailer marks it sold
+//   7. Verifier/consumer verifies the product
+//   8. Anyone can query the full history at any point
 //
 // Every write operation appends a record to the product's history.
 // Nothing is ever deleted or modified after the fact.
@@ -34,9 +34,9 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
     // every action adds one entry, nothing is ever removed
     mapping(uint256 => ProvenanceRecord[]) private histories;
 
-    // only the deployer can assign roles
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
+    // owner or system admin can manage roles
+    modifier onlyAdmin() {
+        require(msg.sender == owner || roles[msg.sender] == Role.SystemAdmin, "Only admin");
         _;
     }
 
@@ -52,7 +52,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
 
     // gives a role to a stakeholder address
     // address needs this before it can call any write functions
-    function assignRole(address account, Role role) external override onlyOwner {
+    function assignRole(address account, Role role) external override onlyAdmin {
         require(account != address(0), "Invalid account");
         require(role != Role.None, "Invalid role");
 
@@ -76,7 +76,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
             productId: productId,
             metadataHash: metadataHash,
             currentCustodian: msg.sender,
-            status: ProductStatus.Created,
+            status: ProductStatus.Registered,
             exists: true
         });
 
@@ -148,44 +148,43 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
             "Role cannot set this status"
         );
 
-        p.status = newStatus;
-
-        histories[productId].push(
-            ProvenanceRecord({
-                timestamp: block.timestamp,
-                actor: msg.sender,
-                action: "UPDATE_STATUS",
-                details: details
-            })
-        );
-
-        emit StatusUpdated(productId, newStatus, msg.sender, details);
+        _recordStatusTransition(productId, newStatus, "UPDATE_STATUS", details);
     }
 
-    // called by a regulator after the product has been delivered
+    // called by a verifier/consumer after the product has been sold
     // final step in the lifecycle, records compliance confirmation
     function verifyProduct(
         uint256 productId,
         string calldata details
     ) external override productExists(productId) {
-        require(roles[msg.sender] == Role.Regulator, "Only regulator");
+        require(roles[msg.sender] == Role.Consumer, "Only verifier");
         require(
-            products[productId].status == ProductStatus.Delivered,
-            "Must be delivered first"
+            products[productId].status == ProductStatus.Sold,
+            "Must be sold first"
         );
 
-        products[productId].status = ProductStatus.Verified;
+        _recordStatusTransition(productId, ProductStatus.Verified, "VERIFY_PRODUCT", details);
+        emit ProductVerified(productId, msg.sender, details);
+    }
+
+    function _recordStatusTransition(
+        uint256 productId,
+        ProductStatus newStatus,
+        string memory action,
+        string memory details
+    ) internal {
+        products[productId].status = newStatus;
 
         histories[productId].push(
             ProvenanceRecord({
                 timestamp: block.timestamp,
                 actor: msg.sender,
-                action: "VERIFY_PRODUCT",
+                action: action,
                 details: details
             })
         );
 
-        emit ProductVerified(productId, msg.sender, details);
+        emit StatusUpdated(productId, newStatus, msg.sender, details);
     }
 
     // -- _isValidTransition (Takeyuki Oshima) --
@@ -195,11 +194,49 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         ProductStatus currentStatus,
         ProductStatus newStatus
     ) internal pure returns (bool) {
-        if (currentStatus == ProductStatus.Created && newStatus == ProductStatus.Packed) return true;
-        if (currentStatus == ProductStatus.Packed && newStatus == ProductStatus.InTransit) return true;
-        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Stored) return true;
-        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.OutForDelivery) return true;
-        if (currentStatus == ProductStatus.OutForDelivery && newStatus == ProductStatus.Delivered) return true;
+        if (currentStatus == ProductStatus.Registered && newStatus == ProductStatus.Certified) return true;
+        if (currentStatus == ProductStatus.Certified && newStatus == ProductStatus.ReadyForShipment) return true;
+        if (currentStatus == ProductStatus.ReadyForShipment && newStatus == ProductStatus.PickedUp) return true;
+        if (currentStatus == ProductStatus.PickedUp && newStatus == ProductStatus.InTransit) return true;
+        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Delivered) return true;
+        if (currentStatus == ProductStatus.Delivered && newStatus == ProductStatus.ReceivedAtWarehouse) return true;
+        if (currentStatus == ProductStatus.ReceivedAtWarehouse && newStatus == ProductStatus.Stored) return true;
+        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.ReleasedFromWarehouse) return true;
+        if (currentStatus == ProductStatus.ReleasedFromWarehouse && newStatus == ProductStatus.ReceivedAtRetailer) return true;
+        if (currentStatus == ProductStatus.ReceivedAtRetailer && newStatus == ProductStatus.AvailableForSale) return true;
+        if (currentStatus == ProductStatus.AvailableForSale && newStatus == ProductStatus.Sold) return true;
+
+        if (currentStatus == ProductStatus.Sold && newStatus == ProductStatus.Verified) return true;
+
+        if (
+            (currentStatus == ProductStatus.PickedUp || currentStatus == ProductStatus.InTransit) &&
+            newStatus == ProductStatus.Lost
+        ) return true;
+
+        if (
+            currentStatus == ProductStatus.InTransit ||
+            currentStatus == ProductStatus.Stored ||
+            currentStatus == ProductStatus.AvailableForSale
+        ) {
+            if (newStatus == ProductStatus.Damaged) return true;
+        }
+
+        if (currentStatus == ProductStatus.Stored || currentStatus == ProductStatus.AvailableForSale) {
+            if (newStatus == ProductStatus.Expired) return true;
+        }
+
+        if (currentStatus == ProductStatus.Sold || currentStatus == ProductStatus.Verified) {
+            if (newStatus == ProductStatus.Returned) return true;
+        }
+
+        if (newStatus == ProductStatus.Recalled) {
+            return (
+                currentStatus != ProductStatus.None &&
+                currentStatus != ProductStatus.Recalled &&
+                currentStatus != ProductStatus.Lost
+            );
+        }
+
         return false;
     }
 
@@ -208,19 +245,49 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         ProductStatus newStatus
     ) internal pure returns (bool) {
         if (callerRole == Role.Producer) {
-            return newStatus == ProductStatus.Packed;
+            return (
+                newStatus == ProductStatus.Certified ||
+                newStatus == ProductStatus.ReadyForShipment
+            );
         }
 
         if (callerRole == Role.Logistics) {
-            return newStatus == ProductStatus.InTransit || newStatus == ProductStatus.OutForDelivery;
+            return (
+                newStatus == ProductStatus.PickedUp ||
+                newStatus == ProductStatus.InTransit ||
+                newStatus == ProductStatus.Delivered ||
+                newStatus == ProductStatus.Damaged ||
+                newStatus == ProductStatus.Lost
+            );
         }
 
         if (callerRole == Role.Warehouse) {
-            return newStatus == ProductStatus.Stored;
+            return (
+                newStatus == ProductStatus.ReceivedAtWarehouse ||
+                newStatus == ProductStatus.Stored ||
+                newStatus == ProductStatus.ReleasedFromWarehouse ||
+                newStatus == ProductStatus.Damaged ||
+                newStatus == ProductStatus.Expired
+            );
         }
 
         if (callerRole == Role.Retailer) {
-            return newStatus == ProductStatus.Delivered;
+            return (
+                newStatus == ProductStatus.ReceivedAtRetailer ||
+                newStatus == ProductStatus.AvailableForSale ||
+                newStatus == ProductStatus.Sold ||
+                newStatus == ProductStatus.Returned ||
+                newStatus == ProductStatus.Damaged ||
+                newStatus == ProductStatus.Expired
+            );
+        }
+
+        if (callerRole == Role.Consumer) {
+            return newStatus == ProductStatus.Verified;
+        }
+
+        if (callerRole == Role.Regulator) {
+            return newStatus == ProductStatus.Recalled;
         }
 
         return false;
@@ -234,7 +301,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         if (
             senderRole == Role.Producer &&
             recipientRole == Role.Logistics &&
-            currentStatus == ProductStatus.Packed
+            currentStatus == ProductStatus.ReadyForShipment
         ) {
             return true;
         }
@@ -242,23 +309,15 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         if (
             senderRole == Role.Logistics &&
             recipientRole == Role.Warehouse &&
-            currentStatus == ProductStatus.InTransit
+            currentStatus == ProductStatus.Delivered
         ) {
             return true;
         }
 
         if (
             senderRole == Role.Warehouse &&
-            recipientRole == Role.Logistics &&
-            currentStatus == ProductStatus.Stored
-        ) {
-            return true;
-        }
-
-        if (
-            senderRole == Role.Logistics &&
             recipientRole == Role.Retailer &&
-            currentStatus == ProductStatus.OutForDelivery
+            currentStatus == ProductStatus.ReleasedFromWarehouse
         ) {
             return true;
         }

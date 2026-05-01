@@ -9,8 +9,10 @@ pragma solidity ^0.8.20;
 // passed along through distributors and retailers, with every
 // action recorded on-chain. Anyone can look up the full history.
 //
-// Lifecycle order:
-// Created -> Packed -> InTransit -> Stored -> OutForDelivery -> Delivered -> Verified
+// Main lifecycle order:
+// Registered -> Certified -> ReadyForShipment -> PickedUp -> InTransit -> Delivered
+// -> ReceivedAtWarehouse -> Stored -> ReleasedFromWarehouse
+// -> ReceivedAtRetailer -> AvailableForSale -> Sold -> Verified
 
 interface ISupplyChainProvenance {
 
@@ -19,11 +21,14 @@ interface ISupplyChainProvenance {
     // None means the address hasn't been set up yet and can't do anything.
     enum Role {
         None,
-        Producer,      // registers and packs products
-        Logistics,     // handles transport and last-mile delivery
-        Warehouse,     // receives and stores products
-        Retailer,      // receives final delivery
-        Regulator      // verifies compliance after delivery
+        Producer,          // registers and prepares products at origin
+        Logistics,         // handles transport legs
+        Warehouse,         // receives and stores products
+        Retailer,          // receives final inventory and sells
+        Consumer,          // verifies provenance at the end
+        SystemAdmin,       // governance/admin role
+        Regulator,         // compliance and recall authority
+        Auditor            // read-only audit role
     }
 
     // -- Product lifecycle states --
@@ -31,13 +36,24 @@ interface ISupplyChainProvenance {
     // _isValidTransition() in the main contract enforces this.
     enum ProductStatus {
         None,
-        Created,
-        Packed,
+        Registered,
+        Certified,
+        ReadyForShipment,
+        PickedUp,
         InTransit,
-        Stored,
-        OutForDelivery,
         Delivered,
-        Verified
+        ReceivedAtWarehouse,
+        Stored,
+        ReleasedFromWarehouse,
+        ReceivedAtRetailer,
+        AvailableForSale,
+        Sold,
+        Verified,
+        Returned,
+        Recalled,
+        Damaged,
+        Expired,
+        Lost
     }
 
     // -- Product record --
@@ -88,10 +104,10 @@ interface ISupplyChainProvenance {
         string details
     );
 
-    // emitted when a regulator signs off on a delivered product
+    // emitted when a verifier/consumer signs off on a sold product
     event ProductVerified(
         uint256 indexed productId,
-        address indexed regulator,
+        address indexed verifier,
         string details
     );
 
@@ -115,16 +131,15 @@ interface ISupplyChainProvenance {
     ) external;
 
     // caller must be current custodian
-    // only valid transitions allowed:
-    // Created->Packed->InTransit->Stored->OutForDelivery->Delivered
+    // only valid lifecycle/exception transitions allowed
     function updateStatus(
         uint256 productId,
         ProductStatus newStatus,
         string calldata details
     ) external;
 
-    // only regulators can call this
-    // product must already be in Delivered status
+    // only Consumer can call this
+    // product must already be in Sold status
     function verifyProduct(
         uint256 productId,
         string calldata details

@@ -218,6 +218,12 @@ describe("SupplyChainProvenance", function () {
             expect(product.status).to.equal(Status.Verified);
         });
 
+        it("should emit StatusUpdated when regulator verifies product", async function () {
+            await expect(contract.connect(regulator).verifyProduct(PRODUCT_ID, "Passed inspection"))
+                .to.emit(contract, "StatusUpdated")
+                .withArgs(PRODUCT_ID, Status.Verified, regulator.address, "Passed inspection");
+        });
+
         it("should revert if product is not yet delivered", async function () {
             await contract.connect(producer).registerProduct(4004, METADATA_HASH);
 

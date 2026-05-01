@@ -1,0 +1,30 @@
+{
+  "name": "cse540-blockchain-group-17-project",
+  "version": "1.0.0",
+  "description": "CSE 540 – Group 17   Alvin Ton · Evan Zhu · Jiayang Xiao · Takeyuki Oshima · Yijin Yang",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "hardhat test",
+    "cli": "hardhat run scripts/cli.js",
+    "demo": "hardhat run scripts/demo.js",
+    "demo:advanced": "hardhat run scripts/demo2.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project/issues"
+  },
+  "homepage": "https://github.com/breadyaboi/CSE540-Blockchain-Group-17-Project#readme",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
+    "hardhat": "^2.22.0"
+  }
+}

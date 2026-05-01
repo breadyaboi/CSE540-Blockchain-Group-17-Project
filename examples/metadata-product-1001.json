@@ -1,0 +1,38 @@
+{
+  "productId": 1001,
+  "productName": "Fresh Milk Batch",
+  "producer": "Sunrise Farms",
+  "batch": "LOT-42",
+  "certificate": {
+    "type": "demo-origin-certificate",
+    "issuer": "Sunrise Farms",
+    "source": "simulated"
+  },
+  "iotReadings": [
+    {
+      "timestamp": "2025-04-20T10:00:00Z",
+      "stage": "Created",
+      "location": "Factory Floor A",
+      "temperatureC": 4.1,
+      "humidity": 61,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-20T14:00:00Z",
+      "stage": "Shipped",
+      "location": "Truck A / Route 17",
+      "temperatureC": 5.0,
+      "humidity": 64,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-20T18:00:00Z",
+      "stage": "Stored",
+      "location": "Warehouse B",
+      "temperatureC": 4.5,
+      "humidity": 60,
+      "source": "simulated"
+    }
+  ],
+  "note": "Course project demo metadata"
+}

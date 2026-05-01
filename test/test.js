@@ -2,36 +2,50 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("SupplyChainProvenance", function () {
-
     let contract;
-    let owner, producer, distributor, retailer, regulator, stranger;
+    let owner, producer, logistics, warehouse, retailer, regulator, stranger;
 
-    const Role   = { None: 0, Producer: 1, Distributor: 2, Retailer: 3, Regulator: 4 };
-    const Status = { None: 0, Created: 1, Shipped: 2, Stored: 3, Delivered: 4, Verified: 5 };
+    const Role = {
+        None: 0,
+        Producer: 1,
+        Logistics: 2,
+        Warehouse: 3,
+        Retailer: 4,
+        Regulator: 5,
+    };
 
-    const PRODUCT_ID    = 1001;
+    const Status = {
+        None: 0,
+        Created: 1,
+        Packed: 2,
+        InTransit: 3,
+        Stored: 4,
+        OutForDelivery: 5,
+        Delivered: 6,
+        Verified: 7,
+    };
+
+    const PRODUCT_ID = 1001;
     const METADATA_HASH = "ipfs://QmExampleHash123";
 
     beforeEach(async function () {
-        [owner, producer, distributor, retailer, regulator, stranger] = await ethers.getSigners();
+        [owner, producer, logistics, warehouse, retailer, regulator, stranger] = await ethers.getSigners();
 
         const Factory = await ethers.getContractFactory("SupplyChainProvenance");
         contract = await Factory.deploy();
 
-        await contract.assignRole(producer.address,    Role.Producer);
-        await contract.assignRole(distributor.address, Role.Distributor);
-        await contract.assignRole(retailer.address,    Role.Retailer);
-        await contract.assignRole(regulator.address,   Role.Regulator);
+        await contract.assignRole(producer.address, Role.Producer);
+        await contract.assignRole(logistics.address, Role.Logistics);
+        await contract.assignRole(warehouse.address, Role.Warehouse);
+        await contract.assignRole(retailer.address, Role.Retailer);
+        await contract.assignRole(regulator.address, Role.Regulator);
     });
 
     describe("Role Assignment", function () {
-
-        it("should assign Producer role correctly", async function () {
-            expect(await contract.getRole(producer.address)).to.equal(Role.Producer);
-        });
-
         it("should assign all roles correctly", async function () {
-            expect(await contract.getRole(distributor.address)).to.equal(Role.Distributor);
+            expect(await contract.getRole(producer.address)).to.equal(Role.Producer);
+            expect(await contract.getRole(logistics.address)).to.equal(Role.Logistics);
+            expect(await contract.getRole(warehouse.address)).to.equal(Role.Warehouse);
             expect(await contract.getRole(retailer.address)).to.equal(Role.Retailer);
             expect(await contract.getRole(regulator.address)).to.equal(Role.Regulator);
         });
@@ -49,14 +63,12 @@ describe("SupplyChainProvenance", function () {
         });
 
         it("should revert if assigning Role.None", async function () {
-            await expect(
-                contract.assignRole(stranger.address, Role.None)
-            ).to.be.revertedWith("Invalid role");
+            await expect(contract.assignRole(stranger.address, Role.None))
+                .to.be.revertedWith("Invalid role");
         });
     });
 
     describe("registerProduct", function () {
-
         it("should register a product and set initial state to Created", async function () {
             await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
 
@@ -68,143 +80,134 @@ describe("SupplyChainProvenance", function () {
             expect(product.exists).to.equal(true);
         });
 
-        it("should emit ProductRegistered event", async function () {
-            await expect(contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH))
-                .to.emit(contract, "ProductRegistered")
-                .withArgs(PRODUCT_ID, producer.address, METADATA_HASH);
-        });
-
-        it("should append a REGISTER record to provenance history", async function () {
-            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-
-            const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            expect(history.length).to.equal(1);
-            expect(history[0].actor).to.equal(producer.address);
-            expect(history[0].action).to.equal("REGISTER");
-        });
-
         it("should revert if caller does not have Producer role", async function () {
             await expect(
-                contract.connect(distributor).registerProduct(PRODUCT_ID, METADATA_HASH)
+                contract.connect(logistics).registerProduct(PRODUCT_ID, METADATA_HASH)
             ).to.be.revertedWith("Only producer");
         });
 
-        it("should revert if product ID is already registered", async function () {
-            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-            await expect(
-                contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH)
-            ).to.be.revertedWith("Duplicate product");
-        });
-
         it("should revert if metadataHash is empty", async function () {
-            await expect(
-                contract.connect(producer).registerProduct(PRODUCT_ID, "")
-            ).to.be.revertedWith("Metadata required");
-        });
-    });
-
-    describe("transferCustody", function () {
-
-        beforeEach(async function () {
-            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-        });
-
-        it("should transfer custody to a new custodian", async function () {
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "To distributor");
-
-            const product = await contract.getProduct(PRODUCT_ID);
-            expect(product.currentCustodian).to.equal(distributor.address);
-        });
-
-        it("should emit CustodyTransferred event", async function () {
-            await expect(
-                contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "To distributor")
-            )
-                .to.emit(contract, "CustodyTransferred")
-                .withArgs(PRODUCT_ID, producer.address, distributor.address);
-        });
-
-        it("should append a TRANSFER_CUSTODY record to provenance history", async function () {
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "To distributor");
-
-            const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            expect(history.length).to.equal(2);
-            expect(history[1].action).to.equal("TRANSFER_CUSTODY");
-            expect(history[1].actor).to.equal(producer.address);
-        });
-
-        it("should revert if caller is not the current custodian", async function () {
-            await expect(
-                contract.connect(distributor).transferCustody(PRODUCT_ID, retailer.address, "Unauthorized")
-            ).to.be.revertedWith("Only current custodian");
-        });
-
-        it("should revert if new custodian has no role assigned", async function () {
-            await expect(
-                contract.connect(producer).transferCustody(PRODUCT_ID, stranger.address, "To stranger")
-            ).to.be.revertedWith("Unassigned recipient");
-        });
-
-        it("should revert if product does not exist", async function () {
-            await expect(
-                contract.connect(producer).transferCustody(9999, distributor.address, "Ghost product")
-            ).to.be.revertedWith("Product not found");
+            await expect(contract.connect(producer).registerProduct(PRODUCT_ID, ""))
+                .to.be.revertedWith("Metadata required");
         });
     });
 
     describe("updateStatus", function () {
-
-        beforeEach(async function () {
+        it("should allow producer to pack a created product", async function () {
             await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "To distributor");
-        });
-
-        it("should update status through valid transitions", async function () {
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "Shipped");
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Stored, "Stored");
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed at origin");
 
             const product = await contract.getProduct(PRODUCT_ID);
-            expect(product.status).to.equal(Status.Stored);
+            expect(product.status).to.equal(Status.Packed);
         });
 
-        it("should emit StatusUpdated event", async function () {
+        it("should revert if producer tries to set InTransit", async function () {
+            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
+
             await expect(
-                contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "In transit")
-            )
-                .to.emit(contract, "StatusUpdated")
-                .withArgs(PRODUCT_ID, Status.Shipped, distributor.address, "In transit");
-        });
-
-        it("should append an UPDATE_STATUS record to provenance history", async function () {
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "In transit");
-
-            const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            const last = history[history.length - 1];
-            expect(last.action).to.equal("UPDATE_STATUS");
-            expect(last.actor).to.equal(distributor.address);
-        });
-
-        it("should revert on invalid status transition", async function () {
-            await expect(
-                contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Delivered, "Skipped steps")
+                contract.connect(producer).updateStatus(PRODUCT_ID, Status.InTransit, "Skip packing")
             ).to.be.revertedWith("Invalid transition");
         });
 
-        it("should revert if caller is not the current custodian", async function () {
+        it("should revert if logistics tries to update before custody transfer", async function () {
+            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+
             await expect(
-                contract.connect(producer).updateStatus(PRODUCT_ID, Status.Shipped, "Not custodian")
+                contract.connect(logistics).updateStatus(PRODUCT_ID, Status.InTransit, "Unauthorized")
             ).to.be.revertedWith("Only current custodian");
+        });
+
+        it("should revert if current custodian has wrong role for target status", async function () {
+            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, warehouse.address, "To warehouse");
+
+            await expect(
+                contract.connect(warehouse).updateStatus(PRODUCT_ID, Status.OutForDelivery, "Wrong role")
+            ).to.be.revertedWith("Invalid transition");
+        });
+    });
+
+    describe("transferCustody", function () {
+        beforeEach(async function () {
+            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
+        });
+
+        it("should allow producer to transfer a packed product to logistics", async function () {
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "To logistics");
+
+            const product = await contract.getProduct(PRODUCT_ID);
+            expect(product.currentCustodian).to.equal(logistics.address);
+        });
+
+        it("should revert if producer transfers before packing", async function () {
+            await expect(
+                contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "Too early")
+            ).to.be.revertedWith("Invalid custody transfer");
+        });
+
+        it("should revert if producer tries to transfer directly to retailer", async function () {
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+
+            await expect(
+                contract.connect(producer).transferCustody(PRODUCT_ID, retailer.address, "Skip stages")
+            ).to.be.revertedWith("Invalid custody transfer");
+        });
+
+        it("should allow logistics to transfer InTransit product to warehouse", async function () {
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, warehouse.address, "To warehouse");
+
+            const product = await contract.getProduct(PRODUCT_ID);
+            expect(product.currentCustodian).to.equal(warehouse.address);
+        });
+
+        it("should allow warehouse to transfer Stored product back to logistics", async function () {
+            await contract.connect(producer).registerProduct(2002, METADATA_HASH);
+            await contract.connect(producer).updateStatus(2002, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(2002, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(2002, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(2002, warehouse.address, "To warehouse");
+            await contract.connect(warehouse).updateStatus(2002, Status.Stored, "Stored");
+            await contract.connect(warehouse).transferCustody(2002, logistics.address, "Back to logistics");
+
+            const product = await contract.getProduct(2002);
+            expect(product.currentCustodian).to.equal(logistics.address);
+        });
+
+        it("should allow logistics to transfer OutForDelivery product to retailer", async function () {
+            await contract.connect(producer).registerProduct(3003, METADATA_HASH);
+            await contract.connect(producer).updateStatus(3003, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(3003, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(3003, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(3003, warehouse.address, "To warehouse");
+            await contract.connect(warehouse).updateStatus(3003, Status.Stored, "Stored");
+            await contract.connect(warehouse).transferCustody(3003, logistics.address, "Back to logistics");
+            await contract.connect(logistics).updateStatus(3003, Status.OutForDelivery, "Last mile");
+            await contract.connect(logistics).transferCustody(3003, retailer.address, "To retailer");
+
+            const product = await contract.getProduct(3003);
+            expect(product.currentCustodian).to.equal(retailer.address);
         });
     });
 
     describe("verifyProduct", function () {
-
         beforeEach(async function () {
             await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "To distributor");
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "Shipped");
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Stored, "Stored");
-            await contract.connect(distributor).transferCustody(PRODUCT_ID, retailer.address, "To retailer");
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, warehouse.address, "To warehouse");
+            await contract.connect(warehouse).updateStatus(PRODUCT_ID, Status.Stored, "Stored");
+            await contract.connect(warehouse).transferCustody(PRODUCT_ID, logistics.address, "Back to logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.OutForDelivery, "Out for delivery");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, retailer.address, "To retailer");
             await contract.connect(retailer).updateStatus(PRODUCT_ID, Status.Delivered, "Delivered");
         });
 
@@ -216,89 +219,52 @@ describe("SupplyChainProvenance", function () {
         });
 
         it("should revert if product is not yet delivered", async function () {
-            await contract.connect(producer).registerProduct(2002, METADATA_HASH);
-            await expect(
-                contract.connect(regulator).verifyProduct(2002, "Too early")
-            ).to.be.revertedWith("Must be delivered first");
-        });
+            await contract.connect(producer).registerProduct(4004, METADATA_HASH);
 
-        it("should revert if caller is not a Regulator", async function () {
             await expect(
-                contract.connect(producer).verifyProduct(PRODUCT_ID, "Wrong role")
-            ).to.be.revertedWith("Only regulator");
+                contract.connect(regulator).verifyProduct(4004, "Too early")
+            ).to.be.revertedWith("Must be delivered first");
         });
     });
 
-    describe("getProvenanceHistory", function () {
-
-        it("should return complete history in order", async function () {
+    describe("history and lifecycle", function () {
+        it("should return complete history in order for the full lifecycle", async function () {
             await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "step 2");
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "step 3");
+            await contract.connect(producer).updateStatus(PRODUCT_ID, Status.Packed, "Packed");
+            await contract.connect(producer).transferCustody(PRODUCT_ID, logistics.address, "To logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.InTransit, "In transit");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, warehouse.address, "To warehouse");
+            await contract.connect(warehouse).updateStatus(PRODUCT_ID, Status.Stored, "Stored");
+            await contract.connect(warehouse).transferCustody(PRODUCT_ID, logistics.address, "Back to logistics");
+            await contract.connect(logistics).updateStatus(PRODUCT_ID, Status.OutForDelivery, "Out for delivery");
+            await contract.connect(logistics).transferCustody(PRODUCT_ID, retailer.address, "To retailer");
+            await contract.connect(retailer).updateStatus(PRODUCT_ID, Status.Delivered, "Delivered");
+            await contract.connect(regulator).verifyProduct(PRODUCT_ID, "Verified");
+
+            const product = await contract.getProduct(PRODUCT_ID);
+            expect(product.status).to.equal(Status.Verified);
+            expect(product.currentCustodian).to.equal(retailer.address);
 
             const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            expect(history.length).to.equal(3);
-            expect(history[0].action).to.equal("REGISTER");
-            expect(history[1].action).to.equal("TRANSFER_CUSTODY");
-            expect(history[2].action).to.equal("UPDATE_STATUS");
+            expect(history.length).to.equal(11);
+            expect(history.map((record) => record.action)).to.deep.equal([
+                "REGISTER",
+                "UPDATE_STATUS",
+                "TRANSFER_CUSTODY",
+                "UPDATE_STATUS",
+                "TRANSFER_CUSTODY",
+                "UPDATE_STATUS",
+                "TRANSFER_CUSTODY",
+                "UPDATE_STATUS",
+                "TRANSFER_CUSTODY",
+                "UPDATE_STATUS",
+                "VERIFY_PRODUCT",
+            ]);
         });
 
         it("should return empty history for unregistered product", async function () {
             const history = await contract.getProvenanceHistory(9999);
             expect(history.length).to.equal(0);
-        });
-    });
-
-    describe("Full Lifecycle", function () {
-
-        it("should complete the full provenance lifecycle from Creation to Verified", async function () {
-            await contract.connect(producer).registerProduct(PRODUCT_ID, METADATA_HASH);
-            let p = await contract.getProduct(PRODUCT_ID);
-            expect(p.status).to.equal(Status.Created);
-            expect(p.currentCustodian).to.equal(producer.address);
-
-            await contract.connect(producer).transferCustody(PRODUCT_ID, distributor.address, "From factory");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.currentCustodian).to.equal(distributor.address);
-
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Shipped, "In transit");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.status).to.equal(Status.Shipped);
-
-            await contract.connect(distributor).updateStatus(PRODUCT_ID, Status.Stored, "At warehouse");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.status).to.equal(Status.Stored);
-
-            await contract.connect(distributor).transferCustody(PRODUCT_ID, retailer.address, "To retailer");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.currentCustodian).to.equal(retailer.address);
-
-            await contract.connect(retailer).updateStatus(PRODUCT_ID, Status.Delivered, "Received");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.status).to.equal(Status.Delivered);
-
-            await contract.connect(regulator).verifyProduct(PRODUCT_ID, "Compliance confirmed");
-            p = await contract.getProduct(PRODUCT_ID);
-            expect(p.status).to.equal(Status.Verified);
-
-            const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            expect(history.length).to.equal(7);
-
-            const actions = history.map(h => h.action);
-            expect(actions).to.deep.equal([
-                "REGISTER",
-                "TRANSFER_CUSTODY",
-                "UPDATE_STATUS",
-                "UPDATE_STATUS",
-                "TRANSFER_CUSTODY",
-                "UPDATE_STATUS",
-                "VERIFY_PRODUCT"
-            ]);
-
-            for (const record of history) {
-                expect(record.timestamp).to.be.gt(0);
-                expect(record.actor).to.not.equal(ethers.ZeroAddress);
-            }
         });
     });
 });

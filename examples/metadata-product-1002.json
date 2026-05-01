@@ -1,0 +1,38 @@
+{
+  "productId": 1002,
+  "productName": "Organic Lettuce Crate",
+  "producer": "Sunrise Farms",
+  "batch": "LOT-57",
+  "certificate": {
+    "type": "demo-freshness-certificate",
+    "issuer": "Sunrise Farms",
+    "source": "simulated"
+  },
+  "iotReadings": [
+    {
+      "timestamp": "2025-04-21T08:00:00Z",
+      "stage": "Created",
+      "location": "Greenhouse 3",
+      "temperatureC": 7.3,
+      "humidity": 72,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-21T12:30:00Z",
+      "stage": "Shipped",
+      "location": "Refrigerated Truck B",
+      "temperatureC": 6.8,
+      "humidity": 70,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-21T16:45:00Z",
+      "stage": "Stored",
+      "location": "Distribution Center Cold Room",
+      "temperatureC": 5.9,
+      "humidity": 68,
+      "source": "simulated"
+    }
+  ],
+  "note": "Course project demo metadata"
+}

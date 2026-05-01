@@ -9,9 +9,11 @@ import "./ISupplyChainProvenance.sol";
 // The basic flow is:
 //   1. Owner assigns roles to stakeholder addresses
 //   2. Producer registers a product
-//   3. Distributor moves it through the chain, updating status along the way
-//   4. Retailer confirms delivery
-//   5. Regulator verifies the product
+//   3. Producer packs it and hands off to logistics
+//   4. Logistics transports it to a warehouse
+//   5. Warehouse stores it and releases it for final-mile delivery
+//   6. Logistics delivers it to a retailer
+//   7. Regulator verifies the product
 //   6. Anyone can query the full history at any point
 //
 // Every write operation appends a record to the product's history.
@@ -101,10 +103,16 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         string calldata details
     ) external override productExists(productId) {
         Product storage p = products[productId];
+        Role senderRole = roles[msg.sender];
+        Role recipientRole = roles[newCustodian];
 
         require(msg.sender == p.currentCustodian, "Only current custodian");
         require(newCustodian != address(0), "Invalid custodian");
-        require(roles[newCustodian] != Role.None, "Unassigned recipient");
+        require(recipientRole != Role.None, "Unassigned recipient");
+        require(
+            _isValidCustodyTransfer(senderRole, recipientRole, p.status),
+            "Invalid custody transfer"
+        );
 
         address previousCustodian = p.currentCustodian;
         p.currentCustodian = newCustodian;
@@ -131,9 +139,14 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         string calldata details
     ) external override productExists(productId) {
         Product storage p = products[productId];
+        Role callerRole = roles[msg.sender];
 
         require(msg.sender == p.currentCustodian, "Only current custodian");
         require(_isValidTransition(p.status, newStatus), "Invalid transition");
+        require(
+            _canUpdateStatus(callerRole, newStatus),
+            "Role cannot set this status"
+        );
 
         p.status = newStatus;
 
@@ -182,9 +195,74 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         ProductStatus currentStatus,
         ProductStatus newStatus
     ) internal pure returns (bool) {
-        if (currentStatus == ProductStatus.Created && newStatus == ProductStatus.Shipped) return true;
-        if (currentStatus == ProductStatus.Shipped && newStatus == ProductStatus.Stored) return true;
-        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.Delivered) return true;
+        if (currentStatus == ProductStatus.Created && newStatus == ProductStatus.Packed) return true;
+        if (currentStatus == ProductStatus.Packed && newStatus == ProductStatus.InTransit) return true;
+        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Stored) return true;
+        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.OutForDelivery) return true;
+        if (currentStatus == ProductStatus.OutForDelivery && newStatus == ProductStatus.Delivered) return true;
+        return false;
+    }
+
+    function _canUpdateStatus(
+        Role callerRole,
+        ProductStatus newStatus
+    ) internal pure returns (bool) {
+        if (callerRole == Role.Producer) {
+            return newStatus == ProductStatus.Packed;
+        }
+
+        if (callerRole == Role.Logistics) {
+            return newStatus == ProductStatus.InTransit || newStatus == ProductStatus.OutForDelivery;
+        }
+
+        if (callerRole == Role.Warehouse) {
+            return newStatus == ProductStatus.Stored;
+        }
+
+        if (callerRole == Role.Retailer) {
+            return newStatus == ProductStatus.Delivered;
+        }
+
+        return false;
+    }
+
+    function _isValidCustodyTransfer(
+        Role senderRole,
+        Role recipientRole,
+        ProductStatus currentStatus
+    ) internal pure returns (bool) {
+        if (
+            senderRole == Role.Producer &&
+            recipientRole == Role.Logistics &&
+            currentStatus == ProductStatus.Packed
+        ) {
+            return true;
+        }
+
+        if (
+            senderRole == Role.Logistics &&
+            recipientRole == Role.Warehouse &&
+            currentStatus == ProductStatus.InTransit
+        ) {
+            return true;
+        }
+
+        if (
+            senderRole == Role.Warehouse &&
+            recipientRole == Role.Logistics &&
+            currentStatus == ProductStatus.Stored
+        ) {
+            return true;
+        }
+
+        if (
+            senderRole == Role.Logistics &&
+            recipientRole == Role.Retailer &&
+            currentStatus == ProductStatus.OutForDelivery
+        ) {
+            return true;
+        }
+
         return false;
     }
 

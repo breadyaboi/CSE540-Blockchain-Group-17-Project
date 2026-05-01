@@ -1,0 +1,46 @@
+{
+  "productId": 1004,
+  "productName": "Frozen Berry Box",
+  "producer": "Sunrise Farms",
+  "batch": "LOT-96",
+  "certificate": {
+    "type": "demo-cold-chain-certificate",
+    "issuer": "Sunrise Farms",
+    "source": "simulated"
+  },
+  "iotReadings": [
+    {
+      "timestamp": "2025-04-23T06:45:00Z",
+      "stage": "Created",
+      "location": "Freezer Unit 1",
+      "temperatureC": -18.2,
+      "humidity": 40,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-23T10:20:00Z",
+      "stage": "Shipped",
+      "location": "Cold Chain Trailer D",
+      "temperatureC": -17.6,
+      "humidity": 42,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-23T14:50:00Z",
+      "stage": "Stored",
+      "location": "Warehouse Freezer Section",
+      "temperatureC": -18.0,
+      "humidity": 41,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-23T18:30:00Z",
+      "stage": "Delivered",
+      "location": "Metro Market Frozen Aisle",
+      "temperatureC": -17.8,
+      "humidity": 43,
+      "source": "simulated"
+    }
+  ],
+  "note": "Course project demo metadata"
+}

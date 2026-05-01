@@ -5,22 +5,34 @@ const hre = require("hardhat");
 const ROLE = {
   None: 0,
   Producer: 1,
-  Distributor: 2,
-  Retailer: 3,
-  Regulator: 4,
+  Logistics: 2,
+  Warehouse: 3,
+  Retailer: 4,
+  Regulator: 5,
 };
 
 const STATUS = {
   None: 0,
   Created: 1,
-  Shipped: 2,
-  Stored: 3,
-  Delivered: 4,
-  Verified: 5,
+  Packed: 2,
+  InTransit: 3,
+  Stored: 4,
+  OutForDelivery: 5,
+  Delivered: 6,
+  Verified: 7,
 };
 
-const ROLE_NAMES = ["None", "Producer", "Distributor", "Retailer", "Regulator"];
-const STATUS_NAMES = ["None", "Created", "Shipped", "Stored", "Delivered", "Verified"];
+const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Regulator"];
+const STATUS_NAMES = [
+  "None",
+  "Created",
+  "Packed",
+  "InTransit",
+  "Stored",
+  "OutForDelivery",
+  "Delivered",
+  "Verified",
+];
 
 function roleName(value) {
   return ROLE_NAMES[Number(value)] ?? `Unknown(${value})`;
@@ -45,46 +57,6 @@ function normalizeAddress(value) {
   return value.trim().toLowerCase();
 }
 
-function participantDefinitions(env) {
-  return [
-    { key: "owner", name: "System Admin", address: env.owner.address },
-    { key: "producer", name: "Sunrise Farms", address: env.producer.address },
-    { key: "distributor", name: "BlueLine Logistics", address: env.distributor.address },
-    { key: "retailer", name: "Metro Market", address: env.retailer.address },
-    { key: "regulator", name: "Food Safety Office", address: env.regulator.address },
-    { key: "viewer", name: "Public Viewer", address: env.viewer.address },
-  ];
-}
-
-function participantDefinitionForAddress(env, address) {
-  const normalized = normalizeAddress(address);
-  return (
-    participantDefinitions(env).find(
-      (participant) => normalizeAddress(participant.address) === normalized
-    ) ?? null
-  );
-}
-
-async function participantDisplayName(env, participant) {
-  const onChainRole = await env.contract.getRole(participant.address);
-  const roleLabel = participant.key === "owner" ? "Owner/Admin" : roleName(onChainRole);
-  return `${participant.name} (${roleLabel})`;
-}
-
-function participantLabelForAddress(env, address) {
-  const participant = participantDefinitionForAddress(env, address);
-  return participant;
-}
-
-async function formatActor(env, address) {
-  const participant = participantDefinitionForAddress(env, address);
-  if (participant) return `${await participantDisplayName(env, participant)} [${short(address)}]`;
-
-  const role = await env.contract.getRole(address);
-  const roleLabel = roleName(role);
-  return `${roleLabel} [${short(address)}]`;
-}
-
 function bold(text) {
   return `\x1b[1m${text}\x1b[0m`;
 }
@@ -93,13 +65,40 @@ function printSectionTitle(title) {
   console.log(`\n${bold(title)}`);
 }
 
+function participantDefinitions(env) {
+  return [
+    { key: "owner", name: "System Admin", address: env.owner.address },
+    { key: "producer", name: "Sunrise Farms", address: env.producer.address },
+    { key: "logistics", name: "BlueLine Logistics", address: env.logistics.address },
+    { key: "warehouse", name: "NorthHub Storage", address: env.warehouse.address },
+    { key: "retailer", name: "Metro Market", address: env.retailer.address },
+    { key: "regulator", name: "Food Safety Office", address: env.regulator.address },
+    { key: "viewer", name: "Public Viewer", address: env.viewer.address },
+  ];
+}
+
+function participantDefinitionForAddress(env, address) {
+  const normalized = normalizeAddress(address);
+  return participantDefinitions(env).find((p) => normalizeAddress(p.address) === normalized) ?? null;
+}
+
+async function participantDisplayName(env, participant) {
+  const onChainRole = await env.contract.getRole(participant.address);
+  const roleLabel = participant.key === "owner" ? "Owner/Admin" : roleName(onChainRole);
+  return `${participant.name} (${roleLabel})`;
+}
+
+async function formatActor(env, address) {
+  const participant = participantDefinitionForAddress(env, address);
+  if (participant) return `${await participantDisplayName(env, participant)} [${short(address)}]`;
+  return `${roleName(await env.contract.getRole(address))} [${short(address)}]`;
+}
+
 async function safeQuestion(rl, prompt) {
   try {
     return await rl.question(prompt);
   } catch (error) {
-    if (error?.code === "ERR_USE_AFTER_CLOSE") {
-      return null;
-    }
+    if (error?.code === "ERR_USE_AFTER_CLOSE") return null;
     throw error;
   }
 }
@@ -119,16 +118,10 @@ async function askNumber(rl, prompt) {
     const answer = await safeQuestion(rl, prompt);
     if (answer === null) return null;
     const raw = answer.trim();
-    if (!raw) {
-      console.log("Input cannot be empty.");
-      continue;
-    }
-
     if (!/^\d+$/.test(raw)) {
       console.log("Enter a positive integer.");
       continue;
     }
-
     return BigInt(raw);
   }
 }
@@ -145,11 +138,11 @@ async function askMenuChoice(rl, validChoices) {
 
 async function askStatus(rl) {
   const options = [
-    ["1", STATUS.Created, "Created"],
-    ["2", STATUS.Shipped, "Shipped"],
+    ["1", STATUS.Packed, "Packed"],
+    ["2", STATUS.InTransit, "InTransit"],
     ["3", STATUS.Stored, "Stored"],
-    ["4", STATUS.Delivered, "Delivered"],
-    ["5", STATUS.Verified, "Verified"],
+    ["4", STATUS.OutForDelivery, "OutForDelivery"],
+    ["5", STATUS.Delivered, "Delivered"],
   ];
 
   console.log("\nAvailable statuses:");
@@ -160,8 +153,7 @@ async function askStatus(rl) {
   while (true) {
     const raw = await safeQuestion(rl, "Choose status number: ");
     if (raw === null) return null;
-    const choice = raw.trim();
-    const match = options.find(([key]) => key === choice);
+    const match = options.find(([key]) => key === raw.trim());
     if (match) return match[1];
     console.log("Invalid status choice.");
   }
@@ -171,34 +163,30 @@ async function askParticipant(env, rl, prompt, includeViewer = true) {
   const entries = [
     ["owner", env.owner],
     ["producer", env.producer],
-    ["distributor", env.distributor],
+    ["logistics", env.logistics],
+    ["warehouse", env.warehouse],
     ["retailer", env.retailer],
     ["regulator", env.regulator],
   ];
 
-  if (includeViewer) {
-    entries.push(["viewer", env.viewer]);
-  }
+  if (includeViewer) entries.push(["viewer", env.viewer]);
 
   console.log(`\n${prompt}`);
-  entries.forEach(([label, signer], index) => {
-    console.log(`  ${index + 1}. ${label} (${short(signer.address)})`);
-  });
+  for (let i = 0; i < entries.length; i += 1) {
+    console.log(`  ${i + 1}. ${entries[i][0]} (${short(entries[i][1].address)})`);
+  }
 
   while (true) {
     const raw = await safeQuestion(rl, "Choose participant number: ");
     if (raw === null) return null;
-    const answer = raw.trim();
-    const idx = Number(answer) - 1;
-    if (Number.isInteger(idx) && idx >= 0 && idx < entries.length) {
-      return entries[idx];
-    }
+    const idx = Number(raw.trim()) - 1;
+    if (Number.isInteger(idx) && idx >= 0 && idx < entries.length) return entries[idx];
     console.log("Invalid participant choice.");
   }
 }
 
 async function deployEnvironment() {
-  const [owner, producer, distributor, retailer, regulator, viewer] = await hre.ethers.getSigners();
+  const [owner, producer, logistics, warehouse, retailer, regulator, viewer] = await hre.ethers.getSigners();
   const factory = await hre.ethers.getContractFactory("SupplyChainProvenance");
   const contract = await factory.deploy();
   await contract.waitForDeployment();
@@ -209,7 +197,8 @@ async function deployEnvironment() {
     contract,
     owner,
     producer,
-    distributor,
+    logistics,
+    warehouse,
     retailer,
     regulator,
     viewer,
@@ -234,35 +223,31 @@ async function printHeader(env) {
 async function showParticipants(env) {
   printSectionTitle("Participants");
   for (const participant of participantDefinitions(env)) {
-    const assignedRole = await env.contract.getRole(participant.address);
-    const displayName = await participantDisplayName(env, participant);
     console.log(
-      `  ${displayName} ${participant.address} role=${roleName(assignedRole)}`
+      `  ${await participantDisplayName(env, participant)} ${participant.address} role=${roleName(
+        await env.contract.getRole(participant.address)
+      )}`
     );
   }
 }
 
 async function showWhoAmI(env) {
-  const onChainRole = await env.contract.getRole(env.currentSigner.address);
   const participant = participantDefinitionForAddress(env, env.currentSigner.address);
   printSectionTitle("Current Session");
   console.log(`  participant: ${participant ? await participantDisplayName(env, participant) : env.currentLabel}`);
   console.log(`  address: ${env.currentSigner.address}`);
-  console.log(`  on-chain role: ${roleName(onChainRole)}`);
+  console.log(`  on-chain role: ${roleName(await env.contract.getRole(env.currentSigner.address))}`);
   console.log(`  is owner: ${normalizeAddress(env.currentSigner.address) === normalizeAddress(env.owner.address)}`);
   console.log(`  contract: ${await env.contract.getAddress()}`);
 }
 
 async function showProduct(env, productId) {
-  const contract = env.contract;
-  const product = await contract.getProduct(productId);
-
+  const product = await env.contract.getProduct(productId);
   printSectionTitle(`Product ${productId.toString()}`);
   if (!product.exists) {
     console.log("  not found");
     return;
   }
-
   console.log(`  metadataHash: ${product.metadataHash}`);
   console.log(`  currentCustodian: ${await formatActor(env, product.currentCustodian)}`);
   console.log(`  status: ${statusName(product.status)} (${Number(product.status)})`);
@@ -270,71 +255,39 @@ async function showProduct(env, productId) {
 }
 
 async function showHistory(env, productId) {
-  const contract = env.contract;
-  const history = await contract.getProvenanceHistory(productId);
-
+  const history = await env.contract.getProvenanceHistory(productId);
   printSectionTitle(`History For Product ${productId.toString()}`);
   console.log(`  records: ${history.length}`);
-  if (history.length === 0) {
-    return;
-  }
-
   history.forEach((record, index) => {
-    const ts = new Date(Number(record.timestamp) * 1000).toISOString();
+    const participant = participantDefinitionForAddress(env, record.actor);
     console.log(
-      `  #${index + 1} ${ts} actor=${
-        participantLabelForAddress(env, record.actor)
-          ? participantLabelForAddress(env, record.actor).name
-          : short(record.actor)
+      `  #${index + 1} ${new Date(Number(record.timestamp) * 1000).toISOString()} actor=${
+        participant ? participant.name : short(record.actor)
       } action=${record.action} details=${record.details}`
     );
   });
 }
 
 async function getRegisteredProductIds(env) {
-  const events = await env.contract.queryFilter(
-    env.contract.filters.ProductRegistered(),
-    env.deploymentBlock
-  );
-
-  const ids = [];
-  const seen = new Set();
-
-  for (const event of events) {
-    const productId = event.args?.productId;
-    if (productId === undefined) continue;
-
-    const key = productId.toString();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    ids.push(productId);
-  }
-
-  ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return ids;
+  const events = await env.contract.queryFilter(env.contract.filters.ProductRegistered(), env.deploymentBlock);
+  return [...new Set(events.map((event) => event.args.productId.toString()))]
+    .map((id) => BigInt(id))
+    .sort((a, b) => (a < b ? -1 : 1));
 }
 
 async function getAllProducts(env) {
-  const productIds = await getRegisteredProductIds(env);
+  const ids = await getRegisteredProductIds(env);
   const products = [];
-
-  for (const productId of productIds) {
-    const product = await env.contract.getProduct(productId);
-    if (product.exists) {
-      products.push(product);
-    }
+  for (const id of ids) {
+    const product = await env.contract.getProduct(id);
+    if (product.exists) products.push(product);
   }
-
   return products;
 }
 
 async function printProductList(env, title, products) {
   printSectionTitle(title);
   console.log(`  count: ${products.length}`);
-  if (products.length === 0) {
-    return;
-  }
-
   for (const product of products) {
     console.log(
       `  id=${product.productId.toString()} status=${statusName(product.status)} custodian=${await formatActor(
@@ -356,13 +309,13 @@ async function runAsCurrent(env, action) {
 }
 
 function printGasUsed(receipt) {
-  if (!receipt?.gasUsed) return;
-  console.log(`  gasUsed: ${receipt.gasUsed.toString()}`);
+  if (receipt?.gasUsed) console.log(`  gasUsed: ${receipt.gasUsed.toString()}`);
 }
 
 async function assignDefaultRoles(env) {
   await env.contract.assignRole(env.producer.address, ROLE.Producer);
-  await env.contract.assignRole(env.distributor.address, ROLE.Distributor);
+  await env.contract.assignRole(env.logistics.address, ROLE.Logistics);
+  await env.contract.assignRole(env.warehouse.address, ROLE.Warehouse);
   await env.contract.assignRole(env.retailer.address, ROLE.Retailer);
   await env.contract.assignRole(env.regulator.address, ROLE.Regulator);
 }
@@ -381,7 +334,6 @@ async function handleAssignDefaultRoles(env) {
 async function handleSwitchSigner(env, rl) {
   const selected = await askParticipant(env, rl, "Available signers:");
   if (!selected) return false;
-
   const [label, signer] = selected;
   env.currentLabel = label;
   env.currentSigner = signer;
@@ -398,8 +350,7 @@ async function handleRegisterProduct(env, rl) {
   if (metadataHash === null) return false;
 
   await runAsCurrent(env, async (contract) => {
-    const tx = await contract.registerProduct(productId, metadataHash);
-    const receipt = await tx.wait();
+    const receipt = await (await contract.registerProduct(productId, metadataHash)).wait();
     printSectionTitle("Product Registered");
     console.log(`  productId: ${productId.toString()}`);
     printGasUsed(receipt);
@@ -410,20 +361,17 @@ async function handleRegisterProduct(env, rl) {
 async function handleTransferCustody(env, rl) {
   const productId = await askNumber(rl, "Product ID: ");
   if (productId === null) return false;
-
   const selected = await askParticipant(env, rl, "Choose new custodian:", false);
   if (!selected) return false;
-
   const [, recipient] = selected;
   const details = await askNonEmpty(rl, "Transfer details: ");
   if (details === null) return false;
 
   await runAsCurrent(env, async (contract) => {
-    const tx = await contract.transferCustody(productId, recipient.address, details);
-    const receipt = await tx.wait();
+    const receipt = await (await contract.transferCustody(productId, recipient.address, details)).wait();
     printSectionTitle("Custody Transferred");
     console.log(`  productId: ${productId.toString()}`);
-    console.log(`  newCustodian: ${recipient.address}`);
+    console.log(`  newCustodian: ${await formatActor(env, recipient.address)}`);
     printGasUsed(receipt);
   });
   return true;
@@ -438,8 +386,7 @@ async function handleUpdateStatus(env, rl) {
   if (details === null) return false;
 
   await runAsCurrent(env, async (contract) => {
-    const tx = await contract.updateStatus(productId, nextStatus, details);
-    const receipt = await tx.wait();
+    const receipt = await (await contract.updateStatus(productId, nextStatus, details)).wait();
     printSectionTitle("Status Updated");
     console.log(`  productId: ${productId.toString()}`);
     console.log(`  status: ${statusName(nextStatus)}`);
@@ -455,8 +402,7 @@ async function handleVerifyProduct(env, rl) {
   if (details === null) return false;
 
   await runAsCurrent(env, async (contract) => {
-    const tx = await contract.verifyProduct(productId, details);
-    const receipt = await tx.wait();
+    const receipt = await (await contract.verifyProduct(productId, details)).wait();
     printSectionTitle("Product Verified");
     console.log(`  productId: ${productId.toString()}`);
     printGasUsed(receipt);
@@ -466,110 +412,73 @@ async function handleVerifyProduct(env, rl) {
 
 async function handleViewProduct(env, rl) {
   const productId = await askNumber(rl, "Product ID: ");
-  if (productId === null) return false;
-  await showProduct(env, productId);
+  if (productId !== null) await showProduct(env, productId);
   return true;
 }
 
 async function handleViewHistory(env, rl) {
   const productId = await askNumber(rl, "Product ID: ");
-  if (productId === null) return false;
-  await showHistory(env, productId);
+  if (productId !== null) await showHistory(env, productId);
   return true;
 }
 
 async function handleViewAllProducts(env) {
-  try {
-    const products = await getAllProducts(env);
-    await printProductList(env, "All registered products", products);
-  } catch (error) {
-    printSectionTitle("Unable To Load Products");
-    console.log(`  ${parseError(error)}`);
-  }
+  await printProductList(env, "All registered products", await getAllProducts(env));
 }
 
 async function handleViewMyProducts(env) {
-  try {
-    const allProducts = await getAllProducts(env);
-    const myProducts = allProducts.filter(
-      (product) =>
-        normalizeAddress(product.currentCustodian) === normalizeAddress(env.currentSigner.address)
-    );
-    const participant = participantDefinitionForAddress(env, env.currentSigner.address);
-    await printProductList(
-      env,
-      `Products currently held by ${
-        participant ? await participantDisplayName(env, participant) : env.currentLabel
-      }`,
-      myProducts
-    );
-  } catch (error) {
-    printSectionTitle("Unable To Load Your Products");
-    console.log(`  ${parseError(error)}`);
-  }
+  const participant = participantDefinitionForAddress(env, env.currentSigner.address);
+  const allProducts = await getAllProducts(env);
+  const mine = allProducts.filter(
+    (product) => normalizeAddress(product.currentCustodian) === normalizeAddress(env.currentSigner.address)
+  );
+  await printProductList(
+    env,
+    `Products currently held by ${participant ? await participantDisplayName(env, participant) : env.currentLabel}`,
+    mine
+  );
 }
 
-function matchesPendingAction(role, product, currentAddress) {
-  const sameCustodian =
-    normalizeAddress(product.currentCustodian) === normalizeAddress(currentAddress);
+function matchesPendingAction(role, product, address) {
+  const sameCustodian = normalizeAddress(product.currentCustodian) === normalizeAddress(address);
   const status = Number(product.status);
-
-  if (role === ROLE.Producer) {
-    return sameCustodian && status === STATUS.Created;
-  }
-
-  if (role === ROLE.Distributor) {
-    return sameCustodian && (status === STATUS.Created || status === STATUS.Shipped);
-  }
-
-  if (role === ROLE.Retailer) {
-    return sameCustodian && status === STATUS.Stored;
-  }
-
-  if (role === ROLE.Regulator) {
-    return status === STATUS.Delivered;
-  }
-
+  if (role === ROLE.Producer) return sameCustodian && status === STATUS.Created;
+  if (role === ROLE.Logistics) return sameCustodian && (status === STATUS.Packed || status === STATUS.Stored);
+  if (role === ROLE.Warehouse) return sameCustodian && status === STATUS.InTransit;
+  if (role === ROLE.Retailer) return sameCustodian && status === STATUS.OutForDelivery;
+  if (role === ROLE.Regulator) return status === STATUS.Delivered;
   return false;
 }
 
 function pendingActionDescription(role) {
-  if (role === ROLE.Producer) return "Products you registered and still need to hand off";
-  if (role === ROLE.Distributor) return "Products in transit or storage that still need processing";
-  if (role === ROLE.Retailer) return "Products waiting for final delivery confirmation";
+  if (role === ROLE.Producer) return "Products waiting to be packed before handoff to logistics";
+  if (role === ROLE.Logistics) return "Products waiting for outbound transport or last-mile delivery";
+  if (role === ROLE.Warehouse) return "Products waiting for storage intake";
+  if (role === ROLE.Retailer) return "Products waiting for delivery confirmation";
   if (role === ROLE.Regulator) return "Delivered products waiting for verification";
   return "No role-specific pending actions for the current signer";
 }
 
 async function handleViewPendingActions(env) {
-  try {
-    const role = Number(await env.contract.getRole(env.currentSigner.address));
-    const allProducts = await getAllProducts(env);
-    const pendingProducts = allProducts.filter((product) =>
-      matchesPendingAction(role, product, env.currentSigner.address)
-    );
-    const participant = participantDefinitionForAddress(env, env.currentSigner.address);
+  const role = Number(await env.contract.getRole(env.currentSigner.address));
+  const participant = participantDefinitionForAddress(env, env.currentSigner.address);
+  const pending = (await getAllProducts(env)).filter((product) =>
+    matchesPendingAction(role, product, env.currentSigner.address)
+  );
 
-    printSectionTitle(
-      `Pending Actions For ${
-        participant ? await participantDisplayName(env, participant) : env.currentLabel
-      }`
+  printSectionTitle(
+    `Pending Actions For ${participant ? await participantDisplayName(env, participant) : env.currentLabel}`
+  );
+  console.log(`  role: ${roleName(role)}`);
+  console.log(`  summary: ${pendingActionDescription(role)}`);
+  console.log(`  count: ${pending.length}`);
+  for (const product of pending) {
+    console.log(
+      `  id=${product.productId.toString()} status=${statusName(product.status)} custodian=${await formatActor(
+        env,
+        product.currentCustodian
+      )} metadata=${product.metadataHash}`
     );
-    console.log(`  role: ${roleName(role)}`);
-    console.log(`  summary: ${pendingActionDescription(role)}`);
-    console.log(`  count: ${pendingProducts.length}`);
-
-    for (const product of pendingProducts) {
-      console.log(
-        `  id=${product.productId.toString()} status=${statusName(product.status)} custodian=${await formatActor(
-          env,
-          product.currentCustodian
-        )} metadata=${product.metadataHash}`
-      );
-    }
-  } catch (error) {
-    printSectionTitle("Unable To Load Pending Actions");
-    console.log(`  ${parseError(error)}`);
   }
 }
 
@@ -579,38 +488,34 @@ async function handleRunFullDemo(env) {
 
   try {
     await assignDefaultRoles(env);
-  } catch (_) {
-    // Ignore duplicate setup failures so the demo can be rerun after a reset.
-  }
+  } catch (_) {}
 
   try {
     let tx = await env.contract.connect(env.producer).registerProduct(productId, metadataHash);
     await tx.wait();
-
-    tx = await env.contract
-      .connect(env.producer)
-      .transferCustody(productId, env.distributor.address, "handoff from producer to distributor");
+    tx = await env.contract.connect(env.producer).updateStatus(productId, STATUS.Packed, "packed at origin");
     await tx.wait();
-
-    tx = await env.contract.connect(env.distributor).updateStatus(productId, STATUS.Shipped, "departed origin");
+    tx = await env.contract.connect(env.producer).transferCustody(productId, env.logistics.address, "handoff to logistics");
     await tx.wait();
-
-    tx = await env.contract.connect(env.distributor).updateStatus(productId, STATUS.Stored, "stored in warehouse");
+    tx = await env.contract.connect(env.logistics).updateStatus(productId, STATUS.InTransit, "departed origin");
     await tx.wait();
-
-    tx = await env.contract
-      .connect(env.distributor)
-      .transferCustody(productId, env.retailer.address, "delivery handoff to retailer");
+    tx = await env.contract.connect(env.logistics).transferCustody(productId, env.warehouse.address, "arrived at warehouse");
     await tx.wait();
-
+    tx = await env.contract.connect(env.warehouse).updateStatus(productId, STATUS.Stored, "stored in warehouse");
+    await tx.wait();
+    tx = await env.contract.connect(env.warehouse).transferCustody(productId, env.logistics.address, "released for delivery");
+    await tx.wait();
+    tx = await env.contract.connect(env.logistics).updateStatus(productId, STATUS.OutForDelivery, "last-mile route started");
+    await tx.wait();
+    tx = await env.contract.connect(env.logistics).transferCustody(productId, env.retailer.address, "delivered to retailer");
+    await tx.wait();
     tx = await env.contract.connect(env.retailer).updateStatus(productId, STATUS.Delivered, "received by retailer");
     await tx.wait();
-
     tx = await env.contract.connect(env.regulator).verifyProduct(productId, "inspection passed");
     await tx.wait();
 
     printSectionTitle("Full Demo Completed");
-    console.log("  productId: 9001");
+    console.log(`  productId: ${productId.toString()}`);
     await showProduct(env, productId);
     await showHistory(env, productId);
   } catch (error) {
@@ -620,8 +525,7 @@ async function handleRunFullDemo(env) {
 }
 
 async function handleReset(env) {
-  const fresh = await deployEnvironment();
-  Object.assign(env, fresh);
+  Object.assign(env, await deployEnvironment());
   printSectionTitle("Environment Reset");
   console.log("  deployed a new contract and reset active signer to owner");
 }
@@ -655,67 +559,21 @@ async function main() {
   try {
     await printHeader(env);
     while (true) {
+      
       printMenu();
 
       const choice = await askMenuChoice(rl, [
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
-        "11",
-        "12",
-        "13",
-        "14",
-        "show",
-        "sh",
-        "assign",
-        "as",
-        "switch",
-        "sw",
-        "register",
-        "reg",
-        "transfer",
-        "tr",
-        "update",
-        "upd",
-        "verify",
-        "ver",
-        "product",
-        "prd",
-        "history",
-        "his",
-        "all",
-        "a",
-        "mine",
-        "m",
-        "pending",
-        "pen",
-        "demo",
-        "d",
-        "reset",
-        "rs",
-        "exit",
-        "q",
-        "whoami",
+        "0","1","2","3","4","5","6","7","8","9","10","11","12","13","14",
+        "show","sh","assign","as","switch","sw","register","reg","transfer","tr",
+        "update","upd","verify","ver","product","prd","history","his","all","a",
+        "mine","m","pending","pen","demo","d","reset","rs","exit","q","whoami",
       ]);
-      await printHeader(env);
 
-      if (choice === null) {
-        console.log("\nInput stream closed. Exiting CLI.");
-        break;
-      }
-
-      if (choice === "0" || choice === "exit" || choice === "q") {
+      if (choice === null || choice === "0" || choice === "exit" || choice === "q") {
         console.log("\nExiting CLI.");
         break;
       }
+      await printHeader(env);
 
       if (choice === "1" || choice === "show" || choice === "sh") await showParticipants(env);
       if (choice === "2" || choice === "assign" || choice === "as") await handleAssignDefaultRoles(env);

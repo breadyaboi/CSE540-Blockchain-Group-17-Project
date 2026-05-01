@@ -7,7 +7,7 @@ Alvin Ton · Evan Zhu · Jiayang Xiao · Takeyuki Oshima · Yijin Yang
 
 ## Description
 
-A Solidity smart contract deployed on Ethereum that records an immutable, append-only provenance history for products as they move through a multi-party supply chain. Stakeholders: "producers", "distributors", "retailers", and "regulators". Each hold a role that governs which contract functions they may call. All key lifecycle events (creation, shipment, storage, delivery, verification) are stored on-chain with actor address, timestamp, and an optional off-chain metadata hash.
+A Solidity smart contract deployed on Ethereum that records an immutable, append-only provenance history for products as they move through a multi-party supply chain. Stakeholders: "producers", "logistics providers", "warehouses", "retailers", and "regulators". Each holds a role that governs which contract functions it may call. All key lifecycle events (creation, packing, transit, storage, delivery, verification) are stored on-chain with actor address, timestamp, and an optional off-chain metadata hash.
 
 **Problem addressed:** Fragmented, mutable, and non-interoperable tracking systems across supply chain participants. This system replaces centralized trust with a shared, verifiable on-chain record.
 
@@ -99,7 +99,7 @@ Expected output: `Compiled 2 Solidity files successfully`
 npx hardhat test
 ```
 
-Expected output: `28 passing`
+Expected output: `passing`
 
 ---
 
@@ -127,18 +127,19 @@ npx hardhat run scripts/deploy.js --network sepolia
 ### Lifecycle
 
 ```
-Created → Shipped → Stored → Delivered → Verified
+Created → Packed → InTransit → Stored → OutForDelivery → Delivered → Verified
 ```
 
 ### Roles
 
 | Role        | Permissions                        |
 |-------------|------------------------------------|
-| Owner/Admin | Assign and revoke roles            |
-| Producer    | Register products                  |
-| Distributor | Transfer custody, update status    |
-| Retailer    | Confirm delivery via updateStatus  |
-| Regulator   | Verify product after delivery      |
+| Owner/Admin | Assign roles to stakeholders |
+| Producer    | Register and pack products |
+| Logistics   | Transport products and handle last-mile delivery |
+| Warehouse   | Receive and store products |
+| Retailer    | Confirm final delivery |
+| Regulator   | Verify product after delivery |
 
 ### Key Functions
 
@@ -146,8 +147,8 @@ Created → Shipped → Stored → Delivered → Verified
 |----------|--------|-------------|
 | `assignRole(address, Role)` | Owner | Assign a role to a stakeholder |
 | `registerProduct(productId, metadataHash)` | Producer | Create initial on-chain product record |
-| `transferCustody(productId, newCustodian, details)` | Current custodian | Hand off custody to next party |
-| `updateStatus(productId, newStatus, details)` | Current custodian | Advance product lifecycle state |
+| `transferCustody(productId, newCustodian, details)` | Current custodian | Hand off custody to the next valid participant in the lifecycle |
+| `updateStatus(productId, newStatus, details)` | Current custodian | Advance product lifecycle state when the caller's role is authorized for that status |
 | `verifyProduct(productId, details)` | Regulator | Mark product as verified after delivery |
 | `getProduct(productId)` | Anyone | Return current product record |
 | `getProvenanceHistory(productId)` | Anyone | Return full event history array |
@@ -173,3 +174,33 @@ Run Demo:
 ```
 npx hardhat run scripts/demo.js
 ```
+
+Run Interactive CLI:
+```
+npm run cli
+```
+
+CLI capabilities:
+- Switch between `owner`, `producer`, `logistics`, `warehouse`, `retailer`, `regulator`, and `viewer`
+- Manually register products, transfer custody, update status, verify products, and query history
+- Run a full multi-role lifecycle demo from the menu
+
+## Workflow Rules
+
+### Role-scoped status transitions
+
+- `Producer`: `Created -> Packed`
+- `Logistics`: `Packed -> InTransit`
+- `Warehouse`: `InTransit -> Stored`
+- `Logistics`: `Stored -> OutForDelivery`
+- `Retailer`: `OutForDelivery -> Delivered`
+- `Regulator`: `Delivered -> Verified`
+
+### Custody transfer rules
+
+- `Producer -> Logistics` only when status is `Packed`
+- `Logistics -> Warehouse` only when status is `InTransit`
+- `Warehouse -> Logistics` only when status is `Stored`
+- `Logistics -> Retailer` only when status is `OutForDelivery`
+
+These rules intentionally reject invalid flows such as a producer transferring directly to a retailer or regulator, or a participant updating statuses outside its stage of the supply chain.

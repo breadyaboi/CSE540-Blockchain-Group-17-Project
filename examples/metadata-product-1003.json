@@ -1,0 +1,38 @@
+{
+  "productId": 1003,
+  "productName": "Premium Yogurt Pack",
+  "producer": "Sunrise Farms",
+  "batch": "LOT-81",
+  "certificate": {
+    "type": "demo-quality-certificate",
+    "issuer": "Sunrise Farms",
+    "source": "simulated"
+  },
+  "iotReadings": [
+    {
+      "timestamp": "2025-04-22T07:15:00Z",
+      "stage": "Created",
+      "location": "Dairy Processing Line 2",
+      "temperatureC": 3.9,
+      "humidity": 58,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-22T11:10:00Z",
+      "stage": "Shipped",
+      "location": "Delivery Van C",
+      "temperatureC": 4.4,
+      "humidity": 57,
+      "source": "simulated"
+    },
+    {
+      "timestamp": "2025-04-22T15:40:00Z",
+      "stage": "Delivered",
+      "location": "Metro Market Receiving Dock",
+      "temperatureC": 4.8,
+      "humidity": 55,
+      "source": "simulated"
+    }
+  ],
+  "note": "Course project demo metadata"
+}

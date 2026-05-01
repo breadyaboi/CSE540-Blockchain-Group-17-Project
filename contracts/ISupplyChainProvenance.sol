@@ -9,7 +9,8 @@ pragma solidity ^0.8.20;
 // passed along through distributors and retailers, with every
 // action recorded on-chain. Anyone can look up the full history.
 //
-// Lifecycle order: Created -> Shipped -> Stored -> Delivered -> Verified
+// Lifecycle order:
+// Created -> Packed -> InTransit -> Stored -> OutForDelivery -> Delivered -> Verified
 
 interface ISupplyChainProvenance {
 
@@ -18,8 +19,9 @@ interface ISupplyChainProvenance {
     // None means the address hasn't been set up yet and can't do anything.
     enum Role {
         None,
-        Producer,      // registers products
-        Distributor,   // moves products, updates status
+        Producer,      // registers and packs products
+        Logistics,     // handles transport and last-mile delivery
+        Warehouse,     // receives and stores products
         Retailer,      // receives final delivery
         Regulator      // verifies compliance after delivery
     }
@@ -30,8 +32,10 @@ interface ISupplyChainProvenance {
     enum ProductStatus {
         None,
         Created,
-        Shipped,
+        Packed,
+        InTransit,
         Stored,
+        OutForDelivery,
         Delivered,
         Verified
     }
@@ -111,7 +115,8 @@ interface ISupplyChainProvenance {
     ) external;
 
     // caller must be current custodian
-    // only valid transitions allowed: Created->Shipped->Stored->Delivered
+    // only valid transitions allowed:
+    // Created->Packed->InTransit->Stored->OutForDelivery->Delivered
     function updateStatus(
         uint256 productId,
         ProductStatus newStatus,

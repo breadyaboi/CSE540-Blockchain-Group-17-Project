@@ -5,22 +5,25 @@ const hre = require("hardhat");
 const ROLE = {
   None: 0,
   Producer: 1,
-  Distributor: 2,
-  Retailer: 3,
-  Regulator: 4,
+  Logistics: 2,
+  Warehouse: 3,
+  Retailer: 4,
+  Regulator: 5,
 };
 
 const STATUS = {
   None: 0,
   Created: 1,
-  Shipped: 2,
-  Stored: 3,
-  Delivered: 4,
-  Verified: 5,
+  Packed: 2,
+  InTransit: 3,
+  Stored: 4,
+  OutForDelivery: 5,
+  Delivered: 6,
+  Verified: 7,
 };
 
-const ROLE_NAMES = ["None", "Producer", "Distributor", "Retailer", "Regulator"];
-const STATUS_NAMES = ["None", "Created", "Shipped", "Stored", "Delivered", "Verified"];
+const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Regulator"];
+const STATUS_NAMES = ["None", "Created", "Packed", "InTransit", "Stored", "OutForDelivery", "Delivered", "Verified"];
 
 function roleName(value) {
   return ROLE_NAMES[Number(value)] ?? `Unknown(${value})`;
@@ -53,41 +56,23 @@ function sanitizeMermaidText(text) {
 }
 
 function toMermaidStepLabel(record) {
-  const action = sanitizeMermaidText(record.action);
-  const details = sanitizeMermaidText(record.details);
-  const at = tsToIso(record.timestamp);
-  return `${action} | ${details} | ${at}`;
+  return `${sanitizeMermaidText(record.action)} | ${sanitizeMermaidText(record.details)} | ${tsToIso(record.timestamp)}`;
 }
 
 function buildMermaidDiagram(historiesByProduct, actorNameByAddress) {
-  const lines = [];
-  lines.push("```mermaid");
-  lines.push("sequenceDiagram");
-  lines.push("  autonumber");
-  lines.push("  participant P as Producer");
-  lines.push("  participant D as Distributor");
-  lines.push("  participant R as Retailer");
-  lines.push("  participant G as Regulator");
-
+  const lines = ["```mermaid", "sequenceDiagram", "  autonumber", "  participant P as Producer", "  participant L as Logistics", "  participant W as Warehouse", "  participant R as Retailer", "  participant G as Regulator"];
   for (const [productId, history] of Object.entries(historiesByProduct)) {
     lines.push(`  Note over P,G: Product ${productId}`);
-    for (const r of history) {
-      const actor = actorNameByAddress[r.actor.toLowerCase()] ?? "Unknown";
-      const step = toMermaidStepLabel(r);
-      if (actor.startsWith("producer")) {
-        lines.push(`  P->>P: ${step}`);
-      } else if (actor.startsWith("distributor")) {
-        lines.push(`  D->>D: ${step}`);
-      } else if (actor.startsWith("retailer")) {
-        lines.push(`  R->>R: ${step}`);
-      } else if (actor.startsWith("regulator")) {
-        lines.push(`  G->>G: ${step}`);
-      } else {
-        lines.push(`  P-->>G: ${step}`);
-      }
+    for (const record of history) {
+      const actor = actorNameByAddress[record.actor.toLowerCase()] ?? "unknown";
+      const step = toMermaidStepLabel(record);
+      if (actor.startsWith("producer")) lines.push(`  P->>P: ${step}`);
+      else if (actor.startsWith("logistics")) lines.push(`  L->>L: ${step}`);
+      else if (actor.startsWith("warehouse")) lines.push(`  W->>W: ${step}`);
+      else if (actor.startsWith("retailer")) lines.push(`  R->>R: ${step}`);
+      else if (actor.startsWith("regulator")) lines.push(`  G->>G: ${step}`);
     }
   }
-
   lines.push("```");
   return lines.join("\n");
 }
@@ -99,45 +84,24 @@ async function expectRevert(label, fn, expectedText) {
   } catch (error) {
     const reason = parseRevertReason(error);
     if (!reason.includes(expectedText)) {
-      throw new Error(`[${label}] wrong revert reason. expected to include "${expectedText}", got: ${reason}`);
+      throw new Error(`[${label}] wrong revert reason. expected "${expectedText}", got: ${reason}`);
     }
     console.log(`  expected revert: ${label} -> ${expectedText}`);
   }
 }
 
 async function runTx(label, txPromise, contract) {
-  const tx = await txPromise;
-  const receipt = await tx.wait();
-
+  const receipt = await (await txPromise).wait();
   console.log(`\n[tx] ${label}`);
   console.log(`  hash: ${receipt.hash}`);
-  // console.log(`  gasUsed: ${receipt.gasUsed.toString()}`);
-
-  const decoded = [];
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== (await contract.getAddress()).toLowerCase()) continue;
     try {
       const parsed = contract.interface.parseLog(log);
-      decoded.push(parsed);
-    } catch (_) {
-      // Ignore logs from other interfaces.
-    }
+      const args = parsed.fragment.inputs.map((input, i) => `${input.name}=${typeof parsed.args[i] === "bigint" ? parsed.args[i].toString() : parsed.args[i]}`);
+      console.log(`  event: ${parsed.name}(${args.join(", ")})`);
+    } catch (_) {}
   }
-
-  if (decoded.length === 0) {
-    console.log("  events: (none decoded)");
-  } else {
-    for (const ev of decoded) {
-      const argStrings = ev.fragment.inputs.map((input, i) => {
-        const v = ev.args[i];
-        if (typeof v === "bigint") return `${input.name}=${v.toString()}`;
-        return `${input.name}=${v}`;
-      });
-      console.log(`  event: ${ev.name}(${argStrings.join(", ")})`);
-    }
-  }
-
-  return receipt;
 }
 
 async function printProductSnapshot(contract, productId, label) {
@@ -146,16 +110,13 @@ async function printProductSnapshot(contract, productId, label) {
   console.log(`  metadataHash: ${p.metadataHash}`);
   console.log(`  currentCustodian: ${p.currentCustodian} (${short(p.currentCustodian)})`);
   console.log(`  status: ${statusName(p.status)} (${Number(p.status)})`);
-  console.log(`  exists: ${p.exists}`);
 }
 
 async function printHistory(contract, productId) {
   const history = await contract.getProvenanceHistory(productId);
   console.log(`\n[history ${productId}] records=${history.length}`);
   history.forEach((r, idx) => {
-    console.log(
-      `  #${idx + 1} t=${tsToIso(r.timestamp)} actor=${short(r.actor)} action=${r.action} details=${r.details}`
-    );
+    console.log(`  #${idx + 1} t=${tsToIso(r.timestamp)} actor=${short(r.actor)} action=${r.action} details=${r.details}`);
   });
 }
 
@@ -163,202 +124,102 @@ async function verifyLifecycle(contract, productId, expectedStatus, expectedCust
   const p = await contract.getProduct(productId);
   assertCondition(p.exists === true, `product ${productId} must exist`);
   assertCondition(Number(p.status) === expectedStatus, `product ${productId} status mismatch`);
-  assertCondition(
-    p.currentCustodian.toLowerCase() === expectedCustodian.toLowerCase(),
-    `product ${productId} custodian mismatch`
-  );
+  assertCondition(p.currentCustodian.toLowerCase() === expectedCustodian.toLowerCase(), `product ${productId} custodian mismatch`);
+  const actions = (await contract.getProvenanceHistory(productId)).map((r) => r.action);
+  assertCondition(actions.length === expectedActions.length, `history length mismatch for ${productId}`);
+  expectedActions.forEach((action, idx) => assertCondition(actions[idx] === action, `action mismatch at ${idx}`));
+}
 
-  const history = await contract.getProvenanceHistory(productId);
-  const actions = history.map((r) => r.action);
-  assertCondition(actions.length === expectedActions.length, `product ${productId} history length mismatch`);
-
-  for (let i = 0; i < actions.length; i += 1) {
-    assertCondition(actions[i] === expectedActions[i], `product ${productId} action mismatch at index ${i}`);
+async function executeFullLifecycle(contract, actors, productId, metadataHash, labels, options = {}) {
+  if (!options.skipRegister) {
+    await runTx(`${labels.producer} registers ${productId}`, contract.connect(actors.producer).registerProduct(productId, metadataHash), contract);
   }
+  await runTx(`${labels.producer} packs ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.Packed, "packed"), contract);
+  await runTx(`${labels.producer}->${labels.logistics}`, contract.connect(actors.producer).transferCustody(productId, actors.logistics.address, "handoff to logistics"), contract);
+  await runTx(`${labels.logistics} in transit`, contract.connect(actors.logistics).updateStatus(productId, STATUS.InTransit, "in transit"), contract);
+  await runTx(`${labels.logistics}->${labels.warehouse}`, contract.connect(actors.logistics).transferCustody(productId, actors.warehouse.address, "arrived at warehouse"), contract);
+  await runTx(`${labels.warehouse} stores`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.Stored, "stored"), contract);
+  await runTx(`${labels.warehouse}->${labels.logistics}`, contract.connect(actors.warehouse).transferCustody(productId, actors.logistics.address, "released for last mile"), contract);
+  await runTx(`${labels.logistics} out for delivery`, contract.connect(actors.logistics).updateStatus(productId, STATUS.OutForDelivery, "out for delivery"), contract);
+  await runTx(`${labels.logistics}->retailer`, contract.connect(actors.logistics).transferCustody(productId, actors.retailer.address, "delivered to retailer"), contract);
+  await runTx(`retailer delivers ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.Delivered, "received by retailer"), contract);
+  await runTx(`regulator verifies ${productId}`, contract.connect(actors.regulator).verifyProduct(productId, "inspection complete"), contract);
 }
 
 async function main() {
-  const [owner, producerA, producerB, distributorA, distributorB, retailer, regulator, outsider] =
-    await hre.ethers.getSigners();
+  const [owner, producerA, producerB, logisticsA, logisticsB, warehouse, retailer, regulator, outsider] = await hre.ethers.getSigners();
 
   console.log("Participants:");
-  console.log(`  owner:        ${owner.address}`);
-  console.log(`  producerA:    ${producerA.address}`);
-  console.log(`  producerB:    ${producerB.address}`);
-  console.log(`  distributorA: ${distributorA.address}`);
-  console.log(`  distributorB: ${distributorB.address}`);
-  console.log(`  retailer:     ${retailer.address}`);
-  console.log(`  regulator:    ${regulator.address}`);
-  console.log(`  outsider:     ${outsider.address}`);
+  console.log(`  owner:      ${owner.address}`);
+  console.log(`  producerA:  ${producerA.address}`);
+  console.log(`  producerB:  ${producerB.address}`);
+  console.log(`  logisticsA: ${logisticsA.address}`);
+  console.log(`  logisticsB: ${logisticsB.address}`);
+  console.log(`  warehouse:  ${warehouse.address}`);
+  console.log(`  retailer:   ${retailer.address}`);
+  console.log(`  regulator:  ${regulator.address}`);
+  console.log(`  outsider:   ${outsider.address}`);
 
   const Factory = await hre.ethers.getContractFactory("SupplyChainProvenance");
   const contract = await Factory.deploy();
   await contract.waitForDeployment();
-
   console.log(`\nContract deployed at: ${await contract.getAddress()}`);
 
-  // Role bootstrap.
   await runTx("assign producerA", contract.assignRole(producerA.address, ROLE.Producer), contract);
   await runTx("assign producerB", contract.assignRole(producerB.address, ROLE.Producer), contract);
-  await runTx("assign distributorA", contract.assignRole(distributorA.address, ROLE.Distributor), contract);
-  await runTx("assign distributorB", contract.assignRole(distributorB.address, ROLE.Distributor), contract);
+  await runTx("assign logisticsA", contract.assignRole(logisticsA.address, ROLE.Logistics), contract);
+  await runTx("assign logisticsB", contract.assignRole(logisticsB.address, ROLE.Logistics), contract);
+  await runTx("assign warehouse", contract.assignRole(warehouse.address, ROLE.Warehouse), contract);
   await runTx("assign retailer", contract.assignRole(retailer.address, ROLE.Retailer), contract);
   await runTx("assign regulator", contract.assignRole(regulator.address, ROLE.Regulator), contract);
 
   console.log("\nRoles after assignment:");
-  for (const s of [producerA, producerB, distributorA, distributorB, retailer, regulator, outsider]) {
-    const role = await contract.getRole(s.address);
-    console.log(`  ${short(s.address)} -> ${roleName(role)} (${Number(role)})`);
+  for (const signer of [producerA, producerB, logisticsA, logisticsB, warehouse, retailer, regulator, outsider]) {
+    console.log(`  ${short(signer.address)} -> ${roleName(await contract.getRole(signer.address))}`);
   }
 
   const P1 = 3001;
   const P2 = 3002;
 
-  // Intentional failures first.
   console.log("\nNegative-path checks:");
-  await expectRevert(
-    "outsider cannot register",
-    () => contract.connect(outsider).registerProduct(9999, "ipfs://unauthorized"),
-    "Only producer"
-  );
+  await expectRevert("outsider cannot register", () => contract.connect(outsider).registerProduct(9999, "ipfs://unauthorized"), "Only producer");
+  await runTx("producerA registers P1", contract.connect(producerA).registerProduct(P1, "ipfs://batch-A/lot-9001"), contract);
+  await expectRevert("producer cannot transfer before packing", () => contract.connect(producerA).transferCustody(P1, logisticsA.address, "too early"), "Invalid custody transfer");
+  await expectRevert("producer cannot skip to retailer", () => contract.connect(producerA).transferCustody(P1, retailer.address, "skip"), "Invalid custody transfer");
+  await expectRevert("outsider cannot verify", () => contract.connect(outsider).verifyProduct(P1, "fake"), "Only regulator");
 
-  await runTx(
-    "producerA registers P1",
-    contract.connect(producerA).registerProduct(P1, "ipfs://batch-A/lot-9001"),
-    contract
-  );
+  await runTx("producerB registers P2", contract.connect(producerB).registerProduct(P2, "ipfs://batch-B/lot-42"), contract);
 
-  await runTx(
-    "producerB registers P2",
-    contract.connect(producerB).registerProduct(P2, "ipfs://batch-B/lot-42"),
-    contract
+  await executeFullLifecycle(
+    contract,
+    { producer: producerA, logistics: logisticsA, warehouse, retailer, regulator },
+    P1,
+    "ipfs://batch-A/lot-9001",
+    { producer: "producerA", logistics: "logisticsA", warehouse: "warehouse" },
+    { skipRegister: true }
   );
-
-  await expectRevert(
-    "cannot skip Created->Delivered",
-    () => contract.connect(producerA).updateStatus(P1, STATUS.Delivered, "invalid jump"),
-    "Invalid transition"
-  );
-
-  await expectRevert(
-    "producerB cannot modify P1 status",
-    () => contract.connect(producerB).updateStatus(P1, STATUS.Shipped, "cross-product tampering"),
-    "Only current custodian"
-  );
-
-  await expectRevert(
-    "outsider cannot verify",
-    () => contract.connect(outsider).verifyProduct(P1, "fake verify"),
-    "Only regulator"
-  );
-
-  // Product 1 lifecycle (through distributorA).
-  await runTx(
-    "P1 custody producerA->distributorA",
-    contract
-      .connect(producerA)
-      .transferCustody(P1, distributorA.address, "handoff: refrigerated truck"),
-    contract
-  );
-
-  await expectRevert(
-    "producerB cannot transfer P1 custody",
-    () =>
-      contract
-        .connect(producerB)
-        .transferCustody(P1, distributorB.address, "unauthorized reroute attempt"),
-    "Only current custodian"
-  );
-
-  await runTx(
-    "P1 status Shipped",
-    contract.connect(distributorA).updateStatus(P1, STATUS.Shipped, "left factory gate"),
-    contract
-  );
-
-  await runTx(
-    "P1 status Stored",
-    contract.connect(distributorA).updateStatus(P1, STATUS.Stored, "stored at DC-A"),
-    contract
-  );
-
-  await runTx(
-    "P1 custody distributorA->retailer",
-    contract.connect(distributorA).transferCustody(P1, retailer.address, "final-mile partner"),
-    contract
-  );
-
-  await runTx(
-    "P1 status Delivered",
-    contract.connect(retailer).updateStatus(P1, STATUS.Delivered, "arrived at store #17"),
-    contract
-  );
-
-  await runTx(
-    "P1 regulator verifies",
-    contract.connect(regulator).verifyProduct(P1, "temperature logs validated"),
-    contract
-  );
-
-  // Product 2 lifecycle (through distributorB).
-  await runTx(
-    "P2 custody producerB->distributorB",
-    contract.connect(producerB).transferCustody(P2, distributorB.address, "pickup at origin"),
-    contract
-  );
-
-  await expectRevert(
-    "distributorA cannot move P2",
-    () => contract.connect(distributorA).transferCustody(P2, retailer.address, "wrong truck pickup"),
-    "Only current custodian"
-  );
-
-  await expectRevert(
-    "distributorA cannot update P2 status",
-    () => contract.connect(distributorA).updateStatus(P2, STATUS.Shipped, "wrong actor update"),
-    "Only current custodian"
-  );
-
-  await runTx(
-    "P2 status Shipped",
-    contract.connect(distributorB).updateStatus(P2, STATUS.Shipped, "in transit via rail"),
-    contract
-  );
-
-  await runTx(
-    "P2 status Stored",
-    contract.connect(distributorB).updateStatus(P2, STATUS.Stored, "stored at hub B"),
-    contract
-  );
-
-  await runTx(
-    "P2 custody distributorB->retailer",
-    contract.connect(distributorB).transferCustody(P2, retailer.address, "cross-dock transfer"),
-    contract
-  );
-
-  await runTx(
-    "P2 status Delivered",
-    contract.connect(retailer).updateStatus(P2, STATUS.Delivered, "received at store #3"),
-    contract
-  );
-
-  await runTx(
-    "P2 regulator verifies",
-    contract.connect(regulator).verifyProduct(P2, "audit docs complete"),
-    contract
+  await executeFullLifecycle(
+    contract,
+    { producer: producerB, logistics: logisticsB, warehouse, retailer, regulator },
+    P2,
+    "ipfs://batch-B/lot-42",
+    { producer: "producerB", logistics: "logisticsB", warehouse: "warehouse" },
+    { skipRegister: true }
   );
 
   await printProductSnapshot(contract, P1, "final state");
   await printProductSnapshot(contract, P2, "final state");
-
   await printHistory(contract, P1);
   await printHistory(contract, P2);
 
   const expectedActions = [
     "REGISTER",
+    "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
+    "TRANSFER_CUSTODY",
+    "UPDATE_STATUS",
+    "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
@@ -373,33 +234,16 @@ async function main() {
   const actorNameByAddress = {
     [producerA.address.toLowerCase()]: "producerA",
     [producerB.address.toLowerCase()]: "producerB",
-    [distributorA.address.toLowerCase()]: "distributorA",
-    [distributorB.address.toLowerCase()]: "distributorB",
+    [logisticsA.address.toLowerCase()]: "logisticsA",
+    [logisticsB.address.toLowerCase()]: "logisticsB",
+    [warehouse.address.toLowerCase()]: "warehouse",
     [retailer.address.toLowerCase()]: "retailer",
     [regulator.address.toLowerCase()]: "regulator",
   };
 
-  const mermaid = buildMermaidDiagram(
-    {
-      [P1]: p1History,
-      [P2]: p2History,
-    },
-    actorNameByAddress
-  );
-
+  const mermaid = buildMermaidDiagram({ [P1]: p1History, [P2]: p2History }, actorNameByAddress);
   const visualizationPath = path.join(__dirname, "demo2-visualization.md");
-  fs.writeFileSync(
-    visualizationPath,
-    [
-      "# Demo 2 Visualization",
-      "",
-      "Generated from on-chain provenance history in `scripts/demo2.js`.",
-      "",
-      mermaid,
-      "",
-    ].join("\n"),
-    "utf8"
-  );
+  fs.writeFileSync(visualizationPath, ["# Demo 2 Visualization", "", "Generated from on-chain provenance history in `scripts/demo2.js`.", "", mermaid, ""].join("\n"), "utf8");
 
   console.log("\nIntegrity checks passed: both product histories and final states match expectations.");
   console.log(`Visualization written to: ${visualizationPath}`);

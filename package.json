@@ -10,7 +10,8 @@
     "test": "hardhat test",
     "cli": "hardhat run scripts/cli.js",
     "demo": "hardhat run scripts/demo.js",
-    "demo:advanced": "hardhat run scripts/demo2.js"
+    "demo:advanced": "hardhat run scripts/demo2.js",
+    "web": "python3 -m http.server 4173"
   },
   "repository": {
     "type": "git",

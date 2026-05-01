@@ -76,7 +76,7 @@ interface ISupplyChainProvenance {
         uint256 timestamp;
         address actor;
         string action;
-        string details;
+        string eventMetadata;
     }
 
     // emitted when owner gives a role to an address
@@ -101,14 +101,14 @@ interface ISupplyChainProvenance {
         uint256 indexed productId,
         ProductStatus indexed newStatus,
         address indexed updatedBy,
-        string details
+        string eventMetadata
     );
 
     // emitted when a verifier/consumer signs off on a sold product
     event ProductVerified(
         uint256 indexed productId,
         address indexed verifier,
-        string details
+        string eventMetadata
     );
 
     // only the contract owner can call this
@@ -127,7 +127,7 @@ interface ISupplyChainProvenance {
     function transferCustody(
         uint256 productId,
         address newCustodian,
-        string calldata details
+        string calldata eventMetadata
     ) external;
 
     // caller must be current custodian
@@ -135,14 +135,14 @@ interface ISupplyChainProvenance {
     function updateStatus(
         uint256 productId,
         ProductStatus newStatus,
-        string calldata details
+        string calldata eventMetadata
     ) external;
 
     // only Consumer can call this
     // product must already be in Sold status
     function verifyProduct(
         uint256 productId,
-        string calldata details
+        string calldata eventMetadata
     ) external;
 
     // read-only, anyone can call

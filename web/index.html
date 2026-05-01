@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supply Chain Provenance UI</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1>Supply Chain Provenance</h1>
+        <p>Wallet-connected interface for product lifecycle and provenance history.</p>
+      </header>
+
+      <section class="card grid-2">
+        <div>
+          <label for="contractAddress">Contract Address</label>
+          <input id="contractAddress" placeholder="0x..." />
+        </div>
+        <div class="row end">
+          <button id="connectBtn">Connect Wallet</button>
+          <button id="loadBtn" class="secondary">Load Contract</button>
+        </div>
+        <div class="status" id="walletStatus">Wallet: not connected</div>
+        <div class="status" id="roleStatus">Role: unknown</div>
+      </section>
+
+      <section class="card">
+        <h2>Write Actions</h2>
+        <div class="grid-2">
+          <div>
+            <h3>Register Product</h3>
+            <input id="regProductId" placeholder="Product ID" />
+            <input id="regMetadata" placeholder="metadataHash (ipfs://cid/...)" />
+            <button id="registerBtn">Register</button>
+          </div>
+
+          <div>
+            <h3>Transfer Custody</h3>
+            <input id="txProductId" placeholder="Product ID" />
+            <input id="txTo" placeholder="New custodian address" />
+            <input id="txMeta" placeholder="eventMetadata (ipfs://cid/...)" />
+            <button id="transferBtn">Transfer</button>
+          </div>
+
+          <div>
+            <h3>Update Status</h3>
+            <input id="stProductId" placeholder="Product ID" />
+            <select id="stStatus"></select>
+            <input id="stMeta" placeholder="eventMetadata (ipfs://cid/...)" />
+            <button id="statusBtn">Update Status</button>
+          </div>
+
+          <div>
+            <h3>Verify Product (Consumer)</h3>
+            <input id="vfProductId" placeholder="Product ID" />
+            <input id="vfMeta" placeholder="eventMetadata (ipfs://cid/...)" />
+            <button id="verifyBtn">Verify</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Read / Audit</h2>
+        <div class="row">
+          <input id="queryProductId" placeholder="Product ID" />
+          <button id="queryBtn" class="secondary">Load Product + History</button>
+        </div>
+        <pre id="productView" class="output"></pre>
+        <pre id="historyView" class="output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Activity</h2>
+        <pre id="logView" class="output"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="/web/app.js"></script>
+  </body>
+</html>

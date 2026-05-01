@@ -85,7 +85,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
                 timestamp: block.timestamp,
                 actor: msg.sender,
                 action: "REGISTER",
-                details: metadataHash
+                eventMetadata: metadataHash
             })
         );
 
@@ -100,7 +100,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
     function transferCustody(
         uint256 productId,
         address newCustodian,
-        string calldata details
+        string calldata eventMetadata
     ) external override productExists(productId) {
         Product storage p = products[productId];
         Role senderRole = roles[msg.sender];
@@ -122,7 +122,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
                 timestamp: block.timestamp,
                 actor: msg.sender,
                 action: "TRANSFER_CUSTODY",
-                details: details
+                eventMetadata: eventMetadata
             })
         );
 
@@ -136,7 +136,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
     function updateStatus(
         uint256 productId,
         ProductStatus newStatus,
-        string calldata details
+        string calldata eventMetadata
     ) external override productExists(productId) {
         Product storage p = products[productId];
         Role callerRole = roles[msg.sender];
@@ -148,30 +148,30 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
             "Role cannot set this status"
         );
 
-        _recordStatusTransition(productId, newStatus, "UPDATE_STATUS", details);
+        _recordStatusTransition(productId, newStatus, "UPDATE_STATUS", eventMetadata);
     }
 
     // called by a verifier/consumer after the product has been sold
     // final step in the lifecycle, records compliance confirmation
     function verifyProduct(
         uint256 productId,
-        string calldata details
+        string calldata eventMetadata
     ) external override productExists(productId) {
-        require(roles[msg.sender] == Role.Consumer, "Only verifier");
+        require(roles[msg.sender] == Role.Consumer, "Only consumer");
         require(
             products[productId].status == ProductStatus.Sold,
             "Must be sold first"
         );
 
-        _recordStatusTransition(productId, ProductStatus.Verified, "VERIFY_PRODUCT", details);
-        emit ProductVerified(productId, msg.sender, details);
+        _recordStatusTransition(productId, ProductStatus.Verified, "VERIFY_PRODUCT", eventMetadata);
+        emit ProductVerified(productId, msg.sender, eventMetadata);
     }
 
     function _recordStatusTransition(
         uint256 productId,
         ProductStatus newStatus,
         string memory action,
-        string memory details
+        string memory eventMetadata
     ) internal {
         products[productId].status = newStatus;
 
@@ -180,11 +180,11 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
                 timestamp: block.timestamp,
                 actor: msg.sender,
                 action: action,
-                details: details
+                eventMetadata: eventMetadata
             })
         );
 
-        emit StatusUpdated(productId, newStatus, msg.sender, details);
+        emit StatusUpdated(productId, newStatus, msg.sender, eventMetadata);
     }
 
     // -- _isValidTransition (Takeyuki Oshima) --

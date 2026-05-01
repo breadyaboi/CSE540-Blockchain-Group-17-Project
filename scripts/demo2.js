@@ -8,22 +8,40 @@ const ROLE = {
   Logistics: 2,
   Warehouse: 3,
   Retailer: 4,
-  Regulator: 5,
+  Consumer: 5,
+  SystemAdmin: 6,
+  Regulator: 7,
+  Auditor: 8,
 };
 
 const STATUS = {
   None: 0,
-  Created: 1,
-  Packed: 2,
-  InTransit: 3,
-  Stored: 4,
-  OutForDelivery: 5,
+  Registered: 1,
+  Certified: 2,
+  ReadyForShipment: 3,
+  PickedUp: 4,
+  InTransit: 5,
   Delivered: 6,
-  Verified: 7,
+  ReceivedAtWarehouse: 7,
+  Stored: 8,
+  ReleasedFromWarehouse: 9,
+  ReceivedAtRetailer: 10,
+  AvailableForSale: 11,
+  Sold: 12,
+  Verified: 13,
+  Returned: 14,
+  Recalled: 15,
+  Damaged: 16,
+  Expired: 17,
+  Lost: 18,
 };
 
-const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Regulator"];
-const STATUS_NAMES = ["None", "Created", "Packed", "InTransit", "Stored", "OutForDelivery", "Delivered", "Verified"];
+const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Consumer", "SystemAdmin", "Regulator", "Auditor"];
+const STATUS_NAMES = [
+  "None", "Registered", "Certified", "ReadyForShipment", "PickedUp", "InTransit", "Delivered",
+  "ReceivedAtWarehouse", "Stored", "ReleasedFromWarehouse", "ReceivedAtRetailer", "AvailableForSale",
+  "Sold", "Verified", "Returned", "Recalled", "Damaged", "Expired", "Lost",
+];
 
 function roleName(value) {
   return ROLE_NAMES[Number(value)] ?? `Unknown(${value})`;
@@ -56,13 +74,13 @@ function sanitizeMermaidText(text) {
 }
 
 function toMermaidStepLabel(record) {
-  return `${sanitizeMermaidText(record.action)} | ${sanitizeMermaidText(record.details)} | ${tsToIso(record.timestamp)}`;
+  return `${sanitizeMermaidText(record.action)} | ${sanitizeMermaidText(record.eventMetadata)} | ${tsToIso(record.timestamp)}`;
 }
 
 function buildMermaidDiagram(historiesByProduct, actorNameByAddress) {
-  const lines = ["```mermaid", "sequenceDiagram", "  autonumber", "  participant P as Producer", "  participant L as Logistics", "  participant W as Warehouse", "  participant R as Retailer", "  participant G as Regulator"];
+  const lines = ["```mermaid", "sequenceDiagram", "  autonumber", "  participant P as Producer", "  participant L as Logistics", "  participant W as Warehouse", "  participant R as Retailer", "  participant C as Consumer"];
   for (const [productId, history] of Object.entries(historiesByProduct)) {
-    lines.push(`  Note over P,G: Product ${productId}`);
+    lines.push(`  Note over P,C: Product ${productId}`);
     for (const record of history) {
       const actor = actorNameByAddress[record.actor.toLowerCase()] ?? "unknown";
       const step = toMermaidStepLabel(record);
@@ -70,7 +88,7 @@ function buildMermaidDiagram(historiesByProduct, actorNameByAddress) {
       else if (actor.startsWith("logistics")) lines.push(`  L->>L: ${step}`);
       else if (actor.startsWith("warehouse")) lines.push(`  W->>W: ${step}`);
       else if (actor.startsWith("retailer")) lines.push(`  R->>R: ${step}`);
-      else if (actor.startsWith("regulator")) lines.push(`  G->>G: ${step}`);
+      else if (actor.startsWith("consumer")) lines.push(`  C->>C: ${step}`);
     }
   }
   lines.push("```");
@@ -116,7 +134,7 @@ async function printHistory(contract, productId) {
   const history = await contract.getProvenanceHistory(productId);
   console.log(`\n[history ${productId}] records=${history.length}`);
   history.forEach((r, idx) => {
-    console.log(`  #${idx + 1} t=${tsToIso(r.timestamp)} actor=${short(r.actor)} action=${r.action} details=${r.details}`);
+    console.log(`  #${idx + 1} t=${tsToIso(r.timestamp)} actor=${short(r.actor)} action=${r.action} eventMetadata=${r.eventMetadata}`);
   });
 }
 
@@ -134,20 +152,25 @@ async function executeFullLifecycle(contract, actors, productId, metadataHash, l
   if (!options.skipRegister) {
     await runTx(`${labels.producer} registers ${productId}`, contract.connect(actors.producer).registerProduct(productId, metadataHash), contract);
   }
-  await runTx(`${labels.producer} packs ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.Packed, "packed"), contract);
-  await runTx(`${labels.producer}->${labels.logistics}`, contract.connect(actors.producer).transferCustody(productId, actors.logistics.address, "handoff to logistics"), contract);
-  await runTx(`${labels.logistics} in transit`, contract.connect(actors.logistics).updateStatus(productId, STATUS.InTransit, "in transit"), contract);
-  await runTx(`${labels.logistics}->${labels.warehouse}`, contract.connect(actors.logistics).transferCustody(productId, actors.warehouse.address, "arrived at warehouse"), contract);
-  await runTx(`${labels.warehouse} stores`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.Stored, "stored"), contract);
-  await runTx(`${labels.warehouse}->${labels.logistics}`, contract.connect(actors.warehouse).transferCustody(productId, actors.logistics.address, "released for last mile"), contract);
-  await runTx(`${labels.logistics} out for delivery`, contract.connect(actors.logistics).updateStatus(productId, STATUS.OutForDelivery, "out for delivery"), contract);
-  await runTx(`${labels.logistics}->retailer`, contract.connect(actors.logistics).transferCustody(productId, actors.retailer.address, "delivered to retailer"), contract);
-  await runTx(`retailer delivers ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.Delivered, "received by retailer"), contract);
-  await runTx(`regulator verifies ${productId}`, contract.connect(actors.regulator).verifyProduct(productId, "inspection complete"), contract);
+  await runTx(`${labels.producer} certifies ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.Certified, `ipfs://cid/certification-${productId}`), contract);
+  await runTx(`${labels.producer} ready for shipment ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.ReadyForShipment, `ipfs://cid/ready-shipment-${productId}`), contract);
+  await runTx(`${labels.producer}->${labels.logistics}`, contract.connect(actors.producer).transferCustody(productId, actors.logistics.address, `ipfs://cid/handoff-logistics-${productId}`), contract);
+  await runTx(`${labels.logistics} picked up`, contract.connect(actors.logistics).updateStatus(productId, STATUS.PickedUp, `ipfs://cid/pickup-proof-${productId}`), contract);
+  await runTx(`${labels.logistics} in transit`, contract.connect(actors.logistics).updateStatus(productId, STATUS.InTransit, `ipfs://cid/in-transit-log-${productId}`), contract);
+  await runTx(`${labels.logistics} delivered`, contract.connect(actors.logistics).updateStatus(productId, STATUS.Delivered, `ipfs://cid/delivery-proof-${productId}`), contract);
+  await runTx(`${labels.logistics}->${labels.warehouse}`, contract.connect(actors.logistics).transferCustody(productId, actors.warehouse.address, `ipfs://cid/handoff-warehouse-${productId}`), contract);
+  await runTx(`${labels.warehouse} received`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.ReceivedAtWarehouse, `ipfs://cid/warehouse-receipt-${productId}`), contract);
+  await runTx(`${labels.warehouse} stores`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.Stored, `ipfs://cid/storage-record-${productId}`), contract);
+  await runTx(`${labels.warehouse} release`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.ReleasedFromWarehouse, `ipfs://cid/release-record-${productId}`), contract);
+  await runTx(`${labels.warehouse}->retailer`, contract.connect(actors.warehouse).transferCustody(productId, actors.retailer.address, `ipfs://cid/handoff-retailer-${productId}`), contract);
+  await runTx(`retailer receives ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.ReceivedAtRetailer, `ipfs://cid/retailer-receipt-${productId}`), contract);
+  await runTx(`retailer lists ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.AvailableForSale, `ipfs://cid/listing-record-${productId}`), contract);
+  await runTx(`retailer sells ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.Sold, `ipfs://cid/sale-record-${productId}`), contract);
+  await runTx(`consumer verifies ${productId}`, contract.connect(actors.consumer).verifyProduct(productId, `ipfs://cid/consumer-verification-${productId}`), contract);
 }
 
 async function main() {
-  const [owner, producerA, producerB, logisticsA, logisticsB, warehouse, retailer, regulator, outsider] = await hre.ethers.getSigners();
+  const [owner, producerA, producerB, logisticsA, logisticsB, warehouse, retailer, consumer, outsider] = await hre.ethers.getSigners();
 
   console.log("Participants:");
   console.log(`  owner:      ${owner.address}`);
@@ -157,7 +180,7 @@ async function main() {
   console.log(`  logisticsB: ${logisticsB.address}`);
   console.log(`  warehouse:  ${warehouse.address}`);
   console.log(`  retailer:   ${retailer.address}`);
-  console.log(`  regulator:  ${regulator.address}`);
+  console.log(`  consumer:   ${consumer.address}`);
   console.log(`  outsider:   ${outsider.address}`);
 
   const Factory = await hre.ethers.getContractFactory("SupplyChainProvenance");
@@ -171,10 +194,10 @@ async function main() {
   await runTx("assign logisticsB", contract.assignRole(logisticsB.address, ROLE.Logistics), contract);
   await runTx("assign warehouse", contract.assignRole(warehouse.address, ROLE.Warehouse), contract);
   await runTx("assign retailer", contract.assignRole(retailer.address, ROLE.Retailer), contract);
-  await runTx("assign regulator", contract.assignRole(regulator.address, ROLE.Regulator), contract);
+  await runTx("assign consumer", contract.assignRole(consumer.address, ROLE.Consumer), contract);
 
   console.log("\nRoles after assignment:");
-  for (const signer of [producerA, producerB, logisticsA, logisticsB, warehouse, retailer, regulator, outsider]) {
+  for (const signer of [producerA, producerB, logisticsA, logisticsB, warehouse, retailer, consumer, outsider]) {
     console.log(`  ${short(signer.address)} -> ${roleName(await contract.getRole(signer.address))}`);
   }
 
@@ -183,26 +206,26 @@ async function main() {
 
   console.log("\nNegative-path checks:");
   await expectRevert("outsider cannot register", () => contract.connect(outsider).registerProduct(9999, "ipfs://unauthorized"), "Only producer");
-  await runTx("producerA registers P1", contract.connect(producerA).registerProduct(P1, "ipfs://batch-A/lot-9001"), contract);
-  await expectRevert("producer cannot transfer before packing", () => contract.connect(producerA).transferCustody(P1, logisticsA.address, "too early"), "Invalid custody transfer");
+  await runTx("producerA registers P1", contract.connect(producerA).registerProduct(P1, "ipfs://cid/product-3001-metadata"), contract);
+  await expectRevert("producer cannot transfer before ready", () => contract.connect(producerA).transferCustody(P1, logisticsA.address, "too early"), "Invalid custody transfer");
   await expectRevert("producer cannot skip to retailer", () => contract.connect(producerA).transferCustody(P1, retailer.address, "skip"), "Invalid custody transfer");
-  await expectRevert("outsider cannot verify", () => contract.connect(outsider).verifyProduct(P1, "fake"), "Only regulator");
+  await expectRevert("outsider cannot verify", () => contract.connect(outsider).verifyProduct(P1, "fake"), "Only consumer");
 
-  await runTx("producerB registers P2", contract.connect(producerB).registerProduct(P2, "ipfs://batch-B/lot-42"), contract);
+  await runTx("producerB registers P2", contract.connect(producerB).registerProduct(P2, "ipfs://cid/product-3002-metadata"), contract);
 
   await executeFullLifecycle(
     contract,
-    { producer: producerA, logistics: logisticsA, warehouse, retailer, regulator },
+    { producer: producerA, logistics: logisticsA, warehouse, retailer, consumer },
     P1,
-    "ipfs://batch-A/lot-9001",
+    "ipfs://cid/product-3001-metadata",
     { producer: "producerA", logistics: "logisticsA", warehouse: "warehouse" },
     { skipRegister: true }
   );
   await executeFullLifecycle(
     contract,
-    { producer: producerB, logistics: logisticsB, warehouse, retailer, regulator },
+    { producer: producerB, logistics: logisticsB, warehouse, retailer, consumer },
     P2,
-    "ipfs://batch-B/lot-42",
+    "ipfs://cid/product-3002-metadata",
     { producer: "producerB", logistics: "logisticsB", warehouse: "warehouse" },
     { skipRegister: true }
   );
@@ -215,13 +238,18 @@ async function main() {
   const expectedActions = [
     "REGISTER",
     "UPDATE_STATUS",
-    "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
-    "TRANSFER_CUSTODY",
+    "UPDATE_STATUS",
     "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
+    "UPDATE_STATUS",
+    "UPDATE_STATUS",
+    "UPDATE_STATUS",
+    "TRANSFER_CUSTODY",
+    "UPDATE_STATUS",
+    "UPDATE_STATUS",
     "UPDATE_STATUS",
     "VERIFY_PRODUCT",
   ];
@@ -238,7 +266,7 @@ async function main() {
     [logisticsB.address.toLowerCase()]: "logisticsB",
     [warehouse.address.toLowerCase()]: "warehouse",
     [retailer.address.toLowerCase()]: "retailer",
-    [regulator.address.toLowerCase()]: "regulator",
+    [consumer.address.toLowerCase()]: "consumer",
   };
 
   const mermaid = buildMermaidDiagram({ [P1]: p1History, [P2]: p2History }, actorNameByAddress);

@@ -141,7 +141,9 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         Product storage p = products[productId];
         Role callerRole = roles[msg.sender];
 
-        require(msg.sender == p.currentCustodian, "Only current custodian");
+        if (!_canBypassCustodyForStatus(callerRole, newStatus)) {
+            require(msg.sender == p.currentCustodian, "Only current custodian");
+        }
         require(_isValidTransition(p.status, newStatus), "Invalid transition");
         require(
             _canUpdateStatus(callerRole, newStatus),
@@ -157,13 +159,27 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         uint256 productId,
         string calldata eventMetadata
     ) external override productExists(productId) {
+        ProductStatus currentStatus = products[productId].status;
+
         require(roles[msg.sender] == Role.Consumer, "Only consumer");
         require(
-            products[productId].status == ProductStatus.Sold,
+            currentStatus == ProductStatus.Sold || currentStatus == ProductStatus.Verified,
             "Must be sold first"
         );
 
-        _recordStatusTransition(productId, ProductStatus.Verified, "VERIFY_PRODUCT", eventMetadata);
+        if (currentStatus == ProductStatus.Sold) {
+            _recordStatusTransition(productId, ProductStatus.Verified, "VERIFY_PRODUCT", eventMetadata);
+        } else {
+            histories[productId].push(
+                ProvenanceRecord({
+                    timestamp: block.timestamp,
+                    actor: msg.sender,
+                    action: "VERIFY_PRODUCT",
+                    eventMetadata: eventMetadata
+                })
+            );
+        }
+
         emit ProductVerified(productId, msg.sender, eventMetadata);
     }
 
@@ -291,6 +307,13 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         }
 
         return false;
+    }
+
+    function _canBypassCustodyForStatus(
+        Role callerRole,
+        ProductStatus newStatus
+    ) internal pure returns (bool) {
+        return callerRole == Role.Regulator && newStatus == ProductStatus.Recalled;
     }
 
     function _isValidCustodyTransfer(

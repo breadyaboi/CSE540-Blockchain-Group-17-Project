@@ -104,6 +104,8 @@ Expected output: `13 passing`
 Created → Packed → InTransit → Stored → AtRetail → Sold → Verified
 ```
 
+![Lifecycle with exception states](docs/images/lifeCyclewException.png)
+
 Exception states:
 
 ```
@@ -136,6 +138,8 @@ Recalled, Returned, Damaged, Expired, Lost
 | `getProduct(productId)` | Anyone | Return current product record |
 | `getProvenanceHistory(productId)` | Anyone | Return full event history array |
 | `getRole(address)` | Anyone | Return role assigned to an address |
+
+![Lifecycle and role mapping](docs/images/lifeCycleandRole.png)
 
 ---
 

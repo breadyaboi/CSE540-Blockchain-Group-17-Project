@@ -19,24 +19,18 @@ describe("SupplyChainProvenance", function () {
 
     const Status = {
         None: 0,
-        Registered: 1,
-        Certified: 2,
-        ReadyForShipment: 3,
-        PickedUp: 4,
-        InTransit: 5,
-        Delivered: 6,
-        ReceivedAtWarehouse: 7,
-        Stored: 8,
-        ReleasedFromWarehouse: 9,
-        ReceivedAtRetailer: 10,
-        AvailableForSale: 11,
-        Sold: 12,
-        Verified: 13,
-        Returned: 14,
-        Recalled: 15,
-        Damaged: 16,
-        Expired: 17,
-        Lost: 18,
+        Created: 1,
+        Packed: 2,
+        InTransit: 3,
+        Stored: 4,
+        AtRetail: 5,
+        Sold: 6,
+        Verified: 7,
+        Returned: 8,
+        Recalled: 9,
+        Damaged: 10,
+        Expired: 11,
+        Lost: 12,
     };
 
     const PRODUCT_ID = 1001;
@@ -59,40 +53,20 @@ describe("SupplyChainProvenance", function () {
 
     async function moveProductToSold(productId = PRODUCT_ID) {
         await contract.connect(producer).registerProduct(productId, METADATA_HASH);
-        await contract.connect(producer).updateStatus(productId, Status.Certified, "Certified");
-        await contract.connect(producer).updateStatus(
-            productId,
-            Status.ReadyForShipment,
-            "Ready for shipment"
-        );
+        await contract.connect(producer).updateStatus(productId, Status.Packed, "Packed");
         await contract.connect(producer).transferCustody(productId, logistics.address, "To logistics");
-        await contract.connect(logistics).updateStatus(productId, Status.PickedUp, "Picked up");
         await contract.connect(logistics).updateStatus(productId, Status.InTransit, "In transit");
-        await contract.connect(logistics).updateStatus(productId, Status.Delivered, "Delivered");
         await contract.connect(logistics).transferCustody(productId, warehouse.address, "To warehouse");
-        await contract.connect(warehouse).updateStatus(
-            productId,
-            Status.ReceivedAtWarehouse,
-            "Received at warehouse"
-        );
         await contract.connect(warehouse).updateStatus(productId, Status.Stored, "Stored");
-        await contract.connect(warehouse).updateStatus(
-            productId,
-            Status.ReleasedFromWarehouse,
-            "Released from warehouse"
-        );
         await contract.connect(warehouse).transferCustody(productId, retailer.address, "To retailer");
-        await contract.connect(retailer).updateStatus(
-            productId,
-            Status.ReceivedAtRetailer,
-            "Received at retailer"
-        );
-        await contract.connect(retailer).updateStatus(
-            productId,
-            Status.AvailableForSale,
-            "Available for sale"
-        );
+        await contract.connect(retailer).updateStatus(productId, Status.AtRetail, "At retail");
         await contract.connect(retailer).updateStatus(productId, Status.Sold, "Sold");
+    }
+
+    async function moveProductToVerified(productId = PRODUCT_ID) {
+        await moveProductToSold(productId);
+        await contract.connect(retailer).transferCustody(productId, consumer.address, "To consumer");
+        await contract.connect(consumer).verifyProduct(productId, "Verified by consumer");
     }
 
     describe("Role Assignment", function () {
@@ -126,7 +100,7 @@ describe("SupplyChainProvenance", function () {
             expect(product.productId).to.equal(PRODUCT_ID);
             expect(product.metadataHash).to.equal(METADATA_HASH);
             expect(product.currentCustodian).to.equal(producer.address);
-            expect(product.status).to.equal(Status.Registered);
+            expect(product.status).to.equal(Status.Created);
             expect(product.exists).to.equal(true);
         });
 
@@ -140,6 +114,7 @@ describe("SupplyChainProvenance", function () {
     describe("verifyProduct", function () {
         beforeEach(async function () {
             await moveProductToSold();
+            await contract.connect(retailer).transferCustody(PRODUCT_ID, consumer.address, "To consumer");
         });
 
         it("allows a consumer to verify a sold product", async function () {
@@ -147,7 +122,7 @@ describe("SupplyChainProvenance", function () {
 
             const product = await contract.getProduct(PRODUCT_ID);
             expect(product.status).to.equal(Status.Verified);
-            expect(product.currentCustodian).to.equal(retailer.address);
+            expect(product.currentCustodian).to.equal(consumer.address);
         });
 
         it("rejects non-consumers", async function () {
@@ -161,7 +136,7 @@ describe("SupplyChainProvenance", function () {
 
             await expect(
                 contract.connect(consumer).verifyProduct(4004, "Too early")
-            ).to.be.revertedWith("Must be sold first");
+            ).to.be.revertedWith("Only current custodian");
         });
 
         it("allows repeated verification without changing status again", async function () {
@@ -220,11 +195,10 @@ describe("SupplyChainProvenance", function () {
 
     describe("history", function () {
         it("records the sold-to-verified flow", async function () {
-            await moveProductToSold();
-            await contract.connect(consumer).verifyProduct(PRODUCT_ID, "Verified");
+            await moveProductToVerified();
 
             const history = await contract.getProvenanceHistory(PRODUCT_ID);
-            expect(history.length).to.equal(16);
+            expect(history.length).to.equal(11);
             expect(history[0].action).to.equal("REGISTER");
             expect(history[history.length - 1].action).to.equal("VERIFY_PRODUCT");
         });

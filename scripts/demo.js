@@ -14,30 +14,23 @@ const ROLE = {
 
 const STATUS = {
   None: 0,
-  Registered: 1,
-  Certified: 2,
-  ReadyForShipment: 3,
-  PickedUp: 4,
-  InTransit: 5,
-  Delivered: 6,
-  ReceivedAtWarehouse: 7,
-  Stored: 8,
-  ReleasedFromWarehouse: 9,
-  ReceivedAtRetailer: 10,
-  AvailableForSale: 11,
-  Sold: 12,
-  Verified: 13,
-  Returned: 14,
-  Recalled: 15,
-  Damaged: 16,
-  Expired: 17,
-  Lost: 18,
+  Created: 1,
+  Packed: 2,
+  InTransit: 3,
+  Stored: 4,
+  AtRetail: 5,
+  Sold: 6,
+  Verified: 7,
+  Returned: 8,
+  Recalled: 9,
+  Damaged: 10,
+  Expired: 11,
+  Lost: 12,
 };
 
 const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Consumer", "SystemAdmin", "Regulator", "Auditor"];
 const STATUS_NAMES = [
-  "None", "Registered", "Certified", "ReadyForShipment", "PickedUp", "InTransit", "Delivered",
-  "ReceivedAtWarehouse", "Stored", "ReleasedFromWarehouse", "ReceivedAtRetailer", "AvailableForSale",
+  "None", "Created", "Packed", "InTransit", "Stored", "AtRetail",
   "Sold", "Verified", "Returned", "Recalled", "Damaged", "Expired", "Lost",
 ];
 
@@ -109,51 +102,36 @@ async function main() {
   await (await contract.connect(producer).registerProduct(productId, metadataHash)).wait();
   await printProduct(contract, productId, "After registration");
 
-  console.log("\n--- Step 3: Certify product ---");
-  await (await contract.connect(producer).updateStatus(productId, STATUS.Certified, "ipfs://cid/certification-1001")).wait();
-  await printProduct(contract, productId, "After certification");
+  console.log("\n--- Step 3: Pack product ---");
+  await (await contract.connect(producer).updateStatus(productId, STATUS.Packed, "ipfs://cid/packing-1001")).wait();
+  await printProduct(contract, productId, "After packing");
 
-  console.log("\n--- Step 4: Mark ready for shipment ---");
-  await (await contract.connect(producer).updateStatus(productId, STATUS.ReadyForShipment, "ipfs://cid/ready-shipment-1001")).wait();
-
-  console.log("\n--- Step 5: Transfer to logistics ---");
+  console.log("\n--- Step 4: Transfer to logistics ---");
   await (await contract.connect(producer).transferCustody(productId, logistics.address, "ipfs://cid/handoff-logistics-1001")).wait();
   await printProduct(contract, productId, "After transfer to logistics");
 
-  console.log("\n--- Step 6: Mark picked up ---");
-  await (await contract.connect(logistics).updateStatus(productId, STATUS.PickedUp, "ipfs://cid/pickup-proof-1001")).wait();
-
-  console.log("\n--- Step 7: Mark in transit ---");
+  console.log("\n--- Step 5: Mark in transit ---");
   await (await contract.connect(logistics).updateStatus(productId, STATUS.InTransit, "ipfs://cid/in-transit-log-1001")).wait();
 
-  console.log("\n--- Step 8: Mark delivered to warehouse gate ---");
-  await (await contract.connect(logistics).updateStatus(productId, STATUS.Delivered, "ipfs://cid/delivery-proof-1001")).wait();
-
-  console.log("\n--- Step 9: Transfer to warehouse ---");
+  console.log("\n--- Step 6: Transfer to warehouse ---");
   await (await contract.connect(logistics).transferCustody(productId, warehouse.address, "ipfs://cid/handoff-warehouse-1001")).wait();
 
-  console.log("\n--- Step 10: Warehouse confirms receipt ---");
-  await (await contract.connect(warehouse).updateStatus(productId, STATUS.ReceivedAtWarehouse, "ipfs://cid/warehouse-receipt-1001")).wait();
-
-  console.log("\n--- Step 11: Store product ---");
+  console.log("\n--- Step 7: Store product ---");
   await (await contract.connect(warehouse).updateStatus(productId, STATUS.Stored, "ipfs://cid/storage-record-1001")).wait();
 
-  console.log("\n--- Step 12: Release from warehouse ---");
-  await (await contract.connect(warehouse).updateStatus(productId, STATUS.ReleasedFromWarehouse, "ipfs://cid/release-record-1001")).wait();
-
-  console.log("\n--- Step 13: Transfer to retailer ---");
+  console.log("\n--- Step 8: Transfer to retailer ---");
   await (await contract.connect(warehouse).transferCustody(productId, retailer.address, "ipfs://cid/handoff-retailer-1001")).wait();
 
-  console.log("\n--- Step 14: Retailer confirms receipt ---");
-  await (await contract.connect(retailer).updateStatus(productId, STATUS.ReceivedAtRetailer, "ipfs://cid/retailer-receipt-1001")).wait();
+  console.log("\n--- Step 9: Mark at retail ---");
+  await (await contract.connect(retailer).updateStatus(productId, STATUS.AtRetail, "ipfs://cid/listing-record-1001")).wait();
 
-  console.log("\n--- Step 15: Make available for sale ---");
-  await (await contract.connect(retailer).updateStatus(productId, STATUS.AvailableForSale, "ipfs://cid/listing-record-1001")).wait();
-
-  console.log("\n--- Step 16: Mark sold ---");
+  console.log("\n--- Step 10: Mark sold ---");
   await (await contract.connect(retailer).updateStatus(productId, STATUS.Sold, "ipfs://cid/sale-record-1001")).wait();
 
-  console.log("\n--- Step 17: Consumer verifies product ---");
+  console.log("\n--- Step 11: Transfer to consumer ---");
+  await (await contract.connect(retailer).transferCustody(productId, consumer.address, "ipfs://cid/handoff-consumer-1001")).wait();
+
+  console.log("\n--- Step 12: Consumer verifies product ---");
   await (await contract.connect(consumer).verifyProduct(productId, "ipfs://cid/consumer-verification-1001")).wait();
   await printProduct(contract, productId, "After verification");
   await printHistory(contract, productId);

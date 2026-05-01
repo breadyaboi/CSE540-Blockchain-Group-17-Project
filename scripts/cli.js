@@ -16,40 +16,28 @@ const ROLE = {
 
 const STATUS = {
   None: 0,
-  Registered: 1,
-  Certified: 2,
-  ReadyForShipment: 3,
-  PickedUp: 4,
-  InTransit: 5,
-  Delivered: 6,
-  ReceivedAtWarehouse: 7,
-  Stored: 8,
-  ReleasedFromWarehouse: 9,
-  ReceivedAtRetailer: 10,
-  AvailableForSale: 11,
-  Sold: 12,
-  Verified: 13,
-  Returned: 14,
-  Recalled: 15,
-  Damaged: 16,
-  Expired: 17,
-  Lost: 18,
+  Created: 1,
+  Packed: 2,
+  InTransit: 3,
+  Stored: 4,
+  AtRetail: 5,
+  Sold: 6,
+  Verified: 7,
+  Returned: 8,
+  Recalled: 9,
+  Damaged: 10,
+  Expired: 11,
+  Lost: 12,
 };
 
 const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Consumer", "SystemAdmin", "Regulator", "Auditor"];
 const STATUS_NAMES = [
   "None",
-  "Registered",
-  "Certified",
-  "ReadyForShipment",
-  "PickedUp",
+  "Created",
+  "Packed",
   "InTransit",
-  "Delivered",
-  "ReceivedAtWarehouse",
   "Stored",
-  "ReleasedFromWarehouse",
-  "ReceivedAtRetailer",
-  "AvailableForSale",
+  "AtRetail",
   "Sold",
   "Verified",
   "Returned",
@@ -164,22 +152,16 @@ async function askMenuChoice(rl, validChoices) {
 
 async function askStatus(rl) {
   const options = [
-    ["1", STATUS.Certified, "Certified"],
-    ["2", STATUS.ReadyForShipment, "ReadyForShipment"],
-    ["3", STATUS.PickedUp, "PickedUp"],
-    ["4", STATUS.InTransit, "InTransit"],
-    ["5", STATUS.Delivered, "Delivered"],
-    ["6", STATUS.ReceivedAtWarehouse, "ReceivedAtWarehouse"],
-    ["7", STATUS.Stored, "Stored"],
-    ["8", STATUS.ReleasedFromWarehouse, "ReleasedFromWarehouse"],
-    ["9", STATUS.ReceivedAtRetailer, "ReceivedAtRetailer"],
-    ["10", STATUS.AvailableForSale, "AvailableForSale"],
-    ["11", STATUS.Sold, "Sold"],
-    ["12", STATUS.Returned, "Returned"],
-    ["13", STATUS.Recalled, "Recalled"],
-    ["14", STATUS.Damaged, "Damaged"],
-    ["15", STATUS.Expired, "Expired"],
-    ["16", STATUS.Lost, "Lost"],
+    ["1", STATUS.Packed, "Packed"],
+    ["2", STATUS.InTransit, "InTransit"],
+    ["3", STATUS.Stored, "Stored"],
+    ["4", STATUS.AtRetail, "AtRetail"],
+    ["5", STATUS.Sold, "Sold"],
+    ["6", STATUS.Returned, "Returned"],
+    ["7", STATUS.Recalled, "Recalled"],
+    ["8", STATUS.Damaged, "Damaged"],
+    ["9", STATUS.Expired, "Expired"],
+    ["10", STATUS.Lost, "Lost"],
   ];
 
   console.log("\nAvailable statuses:");
@@ -482,21 +464,21 @@ async function handleViewMyProducts(env) {
 function matchesPendingAction(role, product, address) {
   const sameCustodian = normalizeAddress(product.currentCustodian) === normalizeAddress(address);
   const status = Number(product.status);
-  if (role === ROLE.Producer) return sameCustodian && (status === STATUS.Registered || status === STATUS.Certified);
-  if (role === ROLE.Logistics) return sameCustodian && (status === STATUS.ReadyForShipment || status === STATUS.PickedUp || status === STATUS.InTransit);
-  if (role === ROLE.Warehouse) return sameCustodian && (status === STATUS.Delivered || status === STATUS.ReceivedAtWarehouse || status === STATUS.Stored);
-  if (role === ROLE.Retailer) return sameCustodian && (status === STATUS.ReleasedFromWarehouse || status === STATUS.ReceivedAtRetailer || status === STATUS.AvailableForSale);
-  if (role === ROLE.Consumer) return status === STATUS.Sold;
+  if (role === ROLE.Producer) return sameCustodian && status === STATUS.Created;
+  if (role === ROLE.Logistics) return sameCustodian && status === STATUS.Packed;
+  if (role === ROLE.Warehouse) return sameCustodian && status === STATUS.InTransit;
+  if (role === ROLE.Retailer) return sameCustodian && (status === STATUS.Stored || status === STATUS.AtRetail);
+  if (role === ROLE.Consumer) return sameCustodian && status === STATUS.Sold;
   if (role === ROLE.Regulator) return status !== STATUS.Recalled && status !== STATUS.Lost && status !== STATUS.None;
   return false;
 }
 
 function pendingActionDescription(role) {
-  if (role === ROLE.Producer) return "Products waiting for certification and shipment readiness";
-  if (role === ROLE.Logistics) return "Products waiting for pickup, transit, and delivery to warehouse";
-  if (role === ROLE.Warehouse) return "Products waiting for intake, storage, and release to retailer";
-  if (role === ROLE.Retailer) return "Products waiting for retail intake, listing, and sale";
-  if (role === ROLE.Consumer) return "Sold products waiting for consumer verification";
+  if (role === ROLE.Producer) return "Products waiting to be packed";
+  if (role === ROLE.Logistics) return "Packed products waiting for in-transit updates";
+  if (role === ROLE.Warehouse) return "In-transit products waiting to be stored";
+  if (role === ROLE.Retailer) return "Products waiting for retail listing and sale";
+  if (role === ROLE.Consumer) return "Sold products already transferred to the consumer and waiting for verification";
   if (role === ROLE.Regulator) return "Products eligible for recall action";
   return "No role-specific pending actions for the current signer";
 }
@@ -535,33 +517,23 @@ async function handleRunFullDemo(env) {
   try {
     let tx = await env.contract.connect(env.producer).registerProduct(productId, metadataHash);
     await tx.wait();
-    tx = await env.contract.connect(env.producer).updateStatus(productId, STATUS.Certified, "certified at origin");
-    await tx.wait();
-    tx = await env.contract.connect(env.producer).updateStatus(productId, STATUS.ReadyForShipment, "ready for shipment");
+    tx = await env.contract.connect(env.producer).updateStatus(productId, STATUS.Packed, "packed at origin");
     await tx.wait();
     tx = await env.contract.connect(env.producer).transferCustody(productId, env.logistics.address, "handoff to logistics");
     await tx.wait();
-    tx = await env.contract.connect(env.logistics).updateStatus(productId, STATUS.PickedUp, "picked up at origin");
-    await tx.wait();
     tx = await env.contract.connect(env.logistics).updateStatus(productId, STATUS.InTransit, "departed origin");
-    await tx.wait();
-    tx = await env.contract.connect(env.logistics).updateStatus(productId, STATUS.Delivered, "delivered to warehouse");
     await tx.wait();
     tx = await env.contract.connect(env.logistics).transferCustody(productId, env.warehouse.address, "handoff at warehouse");
     await tx.wait();
-    tx = await env.contract.connect(env.warehouse).updateStatus(productId, STATUS.ReceivedAtWarehouse, "warehouse received");
-    await tx.wait();
     tx = await env.contract.connect(env.warehouse).updateStatus(productId, STATUS.Stored, "stored in warehouse");
-    await tx.wait();
-    tx = await env.contract.connect(env.warehouse).updateStatus(productId, STATUS.ReleasedFromWarehouse, "released to retailer");
     await tx.wait();
     tx = await env.contract.connect(env.warehouse).transferCustody(productId, env.retailer.address, "delivered to retailer");
     await tx.wait();
-    tx = await env.contract.connect(env.retailer).updateStatus(productId, STATUS.ReceivedAtRetailer, "received by retailer");
-    await tx.wait();
-    tx = await env.contract.connect(env.retailer).updateStatus(productId, STATUS.AvailableForSale, "available for sale");
+    tx = await env.contract.connect(env.retailer).updateStatus(productId, STATUS.AtRetail, "available at retail");
     await tx.wait();
     tx = await env.contract.connect(env.retailer).updateStatus(productId, STATUS.Sold, "sold");
+    await tx.wait();
+    tx = await env.contract.connect(env.retailer).transferCustody(productId, env.consumer.address, "delivered to consumer");
     await tx.wait();
     tx = await env.contract.connect(env.consumer).verifyProduct(productId, "verification passed");
     await tx.wait();

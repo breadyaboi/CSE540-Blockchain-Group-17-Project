@@ -10,9 +10,7 @@ pragma solidity ^0.8.20;
 // action recorded on-chain. Anyone can look up the full history.
 //
 // Main lifecycle order:
-// Registered -> Certified -> ReadyForShipment -> PickedUp -> InTransit -> Delivered
-// -> ReceivedAtWarehouse -> Stored -> ReleasedFromWarehouse
-// -> ReceivedAtRetailer -> AvailableForSale -> Sold -> Verified
+// Created -> Packed -> InTransit -> Stored -> AtRetail -> Sold -> Verified
 
 interface ISupplyChainProvenance {
 
@@ -32,21 +30,15 @@ interface ISupplyChainProvenance {
     }
 
     // -- Product lifecycle states --
-    // Products have to go through these in order, no skipping allowed.
-    // _isValidTransition() in the main contract enforces this.
+    // Products move through a compact lifecycle.
+    // Detailed milestones can still be recorded in provenance history.
     enum ProductStatus {
         None,
-        Registered,
-        Certified,
-        ReadyForShipment,
-        PickedUp,
+        Created,
+        Packed,
         InTransit,
-        Delivered,
-        ReceivedAtWarehouse,
         Stored,
-        ReleasedFromWarehouse,
-        ReceivedAtRetailer,
-        AvailableForSale,
+        AtRetail,
         Sold,
         Verified,
         Returned,
@@ -139,7 +131,7 @@ interface ISupplyChainProvenance {
     ) external;
 
     // only Consumer can call this
-    // product must already be in Sold status
+    // product must already be sold and transferred to the consumer
     function verifyProduct(
         uint256 productId,
         string calldata eventMetadata

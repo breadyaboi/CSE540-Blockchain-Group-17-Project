@@ -9,11 +9,11 @@ import "./ISupplyChainProvenance.sol";
 // The basic flow is:
 //   1. Owner assigns roles to stakeholder addresses
 //   2. Producer registers a product
-//   3. Producer certifies and prepares it for shipment
+//   3. Producer packs it for shipment
 //   4. Logistics transports it and hands off to warehouse
-//   5. Warehouse stores it and releases it to retailer
-//   6. Retailer marks it sold
-//   7. Verifier/consumer verifies the product
+//   5. Warehouse stores it and hands off to retailer
+//   6. Retailer marks it sold and transfers custody to consumer
+//   7. Consumer verifies the product
 //   8. Anyone can query the full history at any point
 //
 // Every write operation appends a record to the product's history.
@@ -76,7 +76,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
             productId: productId,
             metadataHash: metadataHash,
             currentCustodian: msg.sender,
-            status: ProductStatus.Registered,
+            status: ProductStatus.Created,
             exists: true
         });
 
@@ -162,6 +162,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         ProductStatus currentStatus = products[productId].status;
 
         require(roles[msg.sender] == Role.Consumer, "Only consumer");
+        require(products[productId].currentCustodian == msg.sender, "Only current custodian");
         require(
             currentStatus == ProductStatus.Sold || currentStatus == ProductStatus.Verified,
             "Must be sold first"
@@ -210,34 +211,25 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         ProductStatus currentStatus,
         ProductStatus newStatus
     ) internal pure returns (bool) {
-        if (currentStatus == ProductStatus.Registered && newStatus == ProductStatus.Certified) return true;
-        if (currentStatus == ProductStatus.Certified && newStatus == ProductStatus.ReadyForShipment) return true;
-        if (currentStatus == ProductStatus.ReadyForShipment && newStatus == ProductStatus.PickedUp) return true;
-        if (currentStatus == ProductStatus.PickedUp && newStatus == ProductStatus.InTransit) return true;
-        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Delivered) return true;
-        if (currentStatus == ProductStatus.Delivered && newStatus == ProductStatus.ReceivedAtWarehouse) return true;
-        if (currentStatus == ProductStatus.ReceivedAtWarehouse && newStatus == ProductStatus.Stored) return true;
-        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.ReleasedFromWarehouse) return true;
-        if (currentStatus == ProductStatus.ReleasedFromWarehouse && newStatus == ProductStatus.ReceivedAtRetailer) return true;
-        if (currentStatus == ProductStatus.ReceivedAtRetailer && newStatus == ProductStatus.AvailableForSale) return true;
-        if (currentStatus == ProductStatus.AvailableForSale && newStatus == ProductStatus.Sold) return true;
+        if (currentStatus == ProductStatus.Created && newStatus == ProductStatus.Packed) return true;
+        if (currentStatus == ProductStatus.Packed && newStatus == ProductStatus.InTransit) return true;
+        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Stored) return true;
+        if (currentStatus == ProductStatus.Stored && newStatus == ProductStatus.AtRetail) return true;
+        if (currentStatus == ProductStatus.AtRetail && newStatus == ProductStatus.Sold) return true;
 
         if (currentStatus == ProductStatus.Sold && newStatus == ProductStatus.Verified) return true;
 
-        if (
-            (currentStatus == ProductStatus.PickedUp || currentStatus == ProductStatus.InTransit) &&
-            newStatus == ProductStatus.Lost
-        ) return true;
+        if (currentStatus == ProductStatus.InTransit && newStatus == ProductStatus.Lost) return true;
 
         if (
             currentStatus == ProductStatus.InTransit ||
             currentStatus == ProductStatus.Stored ||
-            currentStatus == ProductStatus.AvailableForSale
+            currentStatus == ProductStatus.AtRetail
         ) {
             if (newStatus == ProductStatus.Damaged) return true;
         }
 
-        if (currentStatus == ProductStatus.Stored || currentStatus == ProductStatus.AvailableForSale) {
+        if (currentStatus == ProductStatus.Stored || currentStatus == ProductStatus.AtRetail) {
             if (newStatus == ProductStatus.Expired) return true;
         }
 
@@ -262,16 +254,13 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
     ) internal pure returns (bool) {
         if (callerRole == Role.Producer) {
             return (
-                newStatus == ProductStatus.Certified ||
-                newStatus == ProductStatus.ReadyForShipment
+                newStatus == ProductStatus.Packed
             );
         }
 
         if (callerRole == Role.Logistics) {
             return (
-                newStatus == ProductStatus.PickedUp ||
                 newStatus == ProductStatus.InTransit ||
-                newStatus == ProductStatus.Delivered ||
                 newStatus == ProductStatus.Damaged ||
                 newStatus == ProductStatus.Lost
             );
@@ -279,9 +268,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
 
         if (callerRole == Role.Warehouse) {
             return (
-                newStatus == ProductStatus.ReceivedAtWarehouse ||
                 newStatus == ProductStatus.Stored ||
-                newStatus == ProductStatus.ReleasedFromWarehouse ||
                 newStatus == ProductStatus.Damaged ||
                 newStatus == ProductStatus.Expired
             );
@@ -289,8 +276,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
 
         if (callerRole == Role.Retailer) {
             return (
-                newStatus == ProductStatus.ReceivedAtRetailer ||
-                newStatus == ProductStatus.AvailableForSale ||
+                newStatus == ProductStatus.AtRetail ||
                 newStatus == ProductStatus.Sold ||
                 newStatus == ProductStatus.Returned ||
                 newStatus == ProductStatus.Damaged ||
@@ -324,7 +310,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         if (
             senderRole == Role.Producer &&
             recipientRole == Role.Logistics &&
-            currentStatus == ProductStatus.ReadyForShipment
+            currentStatus == ProductStatus.Packed
         ) {
             return true;
         }
@@ -332,7 +318,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         if (
             senderRole == Role.Logistics &&
             recipientRole == Role.Warehouse &&
-            currentStatus == ProductStatus.Delivered
+            currentStatus == ProductStatus.InTransit
         ) {
             return true;
         }
@@ -340,7 +326,15 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         if (
             senderRole == Role.Warehouse &&
             recipientRole == Role.Retailer &&
-            currentStatus == ProductStatus.ReleasedFromWarehouse
+            currentStatus == ProductStatus.Stored
+        ) {
+            return true;
+        }
+
+        if (
+            senderRole == Role.Retailer &&
+            recipientRole == Role.Consumer &&
+            currentStatus == ProductStatus.Sold
         ) {
             return true;
         }

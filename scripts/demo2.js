@@ -16,30 +16,23 @@ const ROLE = {
 
 const STATUS = {
   None: 0,
-  Registered: 1,
-  Certified: 2,
-  ReadyForShipment: 3,
-  PickedUp: 4,
-  InTransit: 5,
-  Delivered: 6,
-  ReceivedAtWarehouse: 7,
-  Stored: 8,
-  ReleasedFromWarehouse: 9,
-  ReceivedAtRetailer: 10,
-  AvailableForSale: 11,
-  Sold: 12,
-  Verified: 13,
-  Returned: 14,
-  Recalled: 15,
-  Damaged: 16,
-  Expired: 17,
-  Lost: 18,
+  Created: 1,
+  Packed: 2,
+  InTransit: 3,
+  Stored: 4,
+  AtRetail: 5,
+  Sold: 6,
+  Verified: 7,
+  Returned: 8,
+  Recalled: 9,
+  Damaged: 10,
+  Expired: 11,
+  Lost: 12,
 };
 
 const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Consumer", "SystemAdmin", "Regulator", "Auditor"];
 const STATUS_NAMES = [
-  "None", "Registered", "Certified", "ReadyForShipment", "PickedUp", "InTransit", "Delivered",
-  "ReceivedAtWarehouse", "Stored", "ReleasedFromWarehouse", "ReceivedAtRetailer", "AvailableForSale",
+  "None", "Created", "Packed", "InTransit", "Stored", "AtRetail",
   "Sold", "Verified", "Returned", "Recalled", "Damaged", "Expired", "Lost",
 ];
 
@@ -152,20 +145,15 @@ async function executeFullLifecycle(contract, actors, productId, metadataHash, l
   if (!options.skipRegister) {
     await runTx(`${labels.producer} registers ${productId}`, contract.connect(actors.producer).registerProduct(productId, metadataHash), contract);
   }
-  await runTx(`${labels.producer} certifies ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.Certified, `ipfs://cid/certification-${productId}`), contract);
-  await runTx(`${labels.producer} ready for shipment ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.ReadyForShipment, `ipfs://cid/ready-shipment-${productId}`), contract);
+  await runTx(`${labels.producer} packs ${productId}`, contract.connect(actors.producer).updateStatus(productId, STATUS.Packed, `ipfs://cid/packing-${productId}`), contract);
   await runTx(`${labels.producer}->${labels.logistics}`, contract.connect(actors.producer).transferCustody(productId, actors.logistics.address, `ipfs://cid/handoff-logistics-${productId}`), contract);
-  await runTx(`${labels.logistics} picked up`, contract.connect(actors.logistics).updateStatus(productId, STATUS.PickedUp, `ipfs://cid/pickup-proof-${productId}`), contract);
   await runTx(`${labels.logistics} in transit`, contract.connect(actors.logistics).updateStatus(productId, STATUS.InTransit, `ipfs://cid/in-transit-log-${productId}`), contract);
-  await runTx(`${labels.logistics} delivered`, contract.connect(actors.logistics).updateStatus(productId, STATUS.Delivered, `ipfs://cid/delivery-proof-${productId}`), contract);
   await runTx(`${labels.logistics}->${labels.warehouse}`, contract.connect(actors.logistics).transferCustody(productId, actors.warehouse.address, `ipfs://cid/handoff-warehouse-${productId}`), contract);
-  await runTx(`${labels.warehouse} received`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.ReceivedAtWarehouse, `ipfs://cid/warehouse-receipt-${productId}`), contract);
   await runTx(`${labels.warehouse} stores`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.Stored, `ipfs://cid/storage-record-${productId}`), contract);
-  await runTx(`${labels.warehouse} release`, contract.connect(actors.warehouse).updateStatus(productId, STATUS.ReleasedFromWarehouse, `ipfs://cid/release-record-${productId}`), contract);
   await runTx(`${labels.warehouse}->retailer`, contract.connect(actors.warehouse).transferCustody(productId, actors.retailer.address, `ipfs://cid/handoff-retailer-${productId}`), contract);
-  await runTx(`retailer receives ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.ReceivedAtRetailer, `ipfs://cid/retailer-receipt-${productId}`), contract);
-  await runTx(`retailer lists ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.AvailableForSale, `ipfs://cid/listing-record-${productId}`), contract);
+  await runTx(`retailer lists ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.AtRetail, `ipfs://cid/listing-record-${productId}`), contract);
   await runTx(`retailer sells ${productId}`, contract.connect(actors.retailer).updateStatus(productId, STATUS.Sold, `ipfs://cid/sale-record-${productId}`), contract);
+  await runTx(`retailer->consumer ${productId}`, contract.connect(actors.retailer).transferCustody(productId, actors.consumer.address, `ipfs://cid/handoff-consumer-${productId}`), contract);
   await runTx(`consumer verifies ${productId}`, contract.connect(actors.consumer).verifyProduct(productId, `ipfs://cid/consumer-verification-${productId}`), contract);
 }
 
@@ -238,24 +226,19 @@ async function main() {
   const expectedActions = [
     "REGISTER",
     "UPDATE_STATUS",
+    "TRANSFER_CUSTODY",
+    "UPDATE_STATUS",
+    "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
     "UPDATE_STATUS",
     "UPDATE_STATUS",
-    "UPDATE_STATUS",
     "TRANSFER_CUSTODY",
-    "UPDATE_STATUS",
-    "UPDATE_STATUS",
-    "UPDATE_STATUS",
-    "TRANSFER_CUSTODY",
-    "UPDATE_STATUS",
-    "UPDATE_STATUS",
-    "UPDATE_STATUS",
     "VERIFY_PRODUCT",
   ];
 
-  await verifyLifecycle(contract, P1, STATUS.Verified, retailer.address, expectedActions);
-  await verifyLifecycle(contract, P2, STATUS.Verified, retailer.address, expectedActions);
+  await verifyLifecycle(contract, P1, STATUS.Verified, consumer.address, expectedActions);
+  await verifyLifecycle(contract, P2, STATUS.Verified, consumer.address, expectedActions);
 
   const p1History = await contract.getProvenanceHistory(P1);
   const p2History = await contract.getProvenanceHistory(P2);

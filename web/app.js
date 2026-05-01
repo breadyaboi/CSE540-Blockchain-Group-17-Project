@@ -1,7 +1,6 @@
 const ROLE_NAMES = ["None", "Producer", "Logistics", "Warehouse", "Retailer", "Consumer", "SystemAdmin", "Regulator", "Auditor"];
 const STATUS_NAMES = [
-  "None", "Registered", "Certified", "ReadyForShipment", "PickedUp", "InTransit", "Delivered",
-  "ReceivedAtWarehouse", "Stored", "ReleasedFromWarehouse", "ReceivedAtRetailer", "AvailableForSale",
+  "None", "Created", "Packed", "InTransit", "Stored", "AtRetail",
   "Sold", "Verified", "Returned", "Recalled", "Damaged", "Expired", "Lost",
 ];
 

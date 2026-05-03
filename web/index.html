@@ -16,12 +16,27 @@
 
       <section class="card grid-2">
         <div>
-          <label for="contractAddress">Contract Address</label>
-          <input id="contractAddress" placeholder="0x..." />
+          <label for="connectionMode">Connection Mode</label>
+          <select id="connectionMode">
+            <option value="metamask">MetaMask (window.ethereum)</option>
+            <option value="rpc">RPC + Private Key (local test only)</option>
+          </select>
         </div>
         <div class="row end">
-          <button id="connectBtn">Connect Wallet</button>
+          <button id="connectBtn">Connect</button>
           <button id="loadBtn" class="secondary">Load Contract</button>
+        </div>
+        <div>
+          <label for="rpcUrl">RPC URL (for RPC mode)</label>
+          <input id="rpcUrl" placeholder="http://127.0.0.1:8545" />
+        </div>
+        <div>
+          <label for="privateKey">Private Key (for RPC mode)</label>
+          <input id="privateKey" type="password" placeholder="0x..." />
+        </div>
+        <div>
+          <label for="contractAddress">Contract Address</label>
+          <input id="contractAddress" placeholder="0x..." />
         </div>
         <div class="status" id="walletStatus">Wallet: not connected</div>
         <div class="status" id="roleStatus">Role: unknown</div>

@@ -13,6 +13,9 @@ const state = {
 };
 
 const el = {
+  connectionMode: document.getElementById("connectionMode"),
+  rpcUrl: document.getElementById("rpcUrl"),
+  privateKey: document.getElementById("privateKey"),
   contractAddress: document.getElementById("contractAddress"),
   connectBtn: document.getElementById("connectBtn"),
   loadBtn: document.getElementById("loadBtn"),
@@ -68,13 +71,27 @@ async function refreshRole() {
 }
 
 async function connectWallet() {
-  if (!window.ethereum) throw new Error("MetaMask not found.");
-  state.provider = new ethers.BrowserProvider(window.ethereum);
-  await state.provider.send("eth_requestAccounts", []);
-  state.signer = await state.provider.getSigner();
+  const mode = el.connectionMode.value;
+
+  if (mode === "metamask") {
+    if (!window.ethereum) throw new Error("MetaMask not found.");
+    state.provider = new ethers.BrowserProvider(window.ethereum);
+    await state.provider.send("eth_requestAccounts", []);
+    state.signer = await state.provider.getSigner();
+  } else {
+    const rpcUrl = el.rpcUrl.value.trim();
+    const privateKey = el.privateKey.value.trim();
+    if (!rpcUrl) throw new Error("RPC URL is required for RPC mode.");
+    if (!privateKey) throw new Error("Private key is required for RPC mode.");
+
+    state.provider = new ethers.JsonRpcProvider(rpcUrl);
+    state.signer = new ethers.Wallet(privateKey, state.provider);
+  }
+
   state.account = await state.signer.getAddress();
-  el.walletStatus.textContent = `Wallet: ${short(state.account)}`;
-  log(`Connected wallet ${state.account}`);
+  const label = mode === "metamask" ? "MetaMask" : "RPC wallet";
+  el.walletStatus.textContent = `Wallet: ${short(state.account)} via ${label}`;
+  log(`Connected ${label} ${state.account}`);
 }
 
 async function loadContract() {

@@ -43,6 +43,20 @@
       </section>
 
       <section class="card">
+        <h2>Admin: Batch Assign Roles</h2>
+        <p>One per line: <code>address,role</code> (role can be number or name like <code>Producer</code>).</p>
+        <textarea
+          id="batchAssignments"
+          class="textarea"
+          rows="6"
+          placeholder="0xabc...,Producer&#10;0xdef...,2"
+        ></textarea>
+        <div class="row end">
+          <button id="assignBatchBtn">Assign Roles (Batch)</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Write Actions</h2>
         <div class="grid-2">
           <div>

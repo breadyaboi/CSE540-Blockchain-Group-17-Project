@@ -21,6 +21,8 @@ const el = {
   loadBtn: document.getElementById("loadBtn"),
   walletStatus: document.getElementById("walletStatus"),
   roleStatus: document.getElementById("roleStatus"),
+  batchAssignments: document.getElementById("batchAssignments"),
+  assignBatchBtn: document.getElementById("assignBatchBtn"),
   regProductId: document.getElementById("regProductId"),
   regMetadata: document.getElementById("regMetadata"),
   registerBtn: document.getElementById("registerBtn"),
@@ -62,6 +64,47 @@ async function loadAbi() {
 
 function short(address) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function parseRoleValue(rawValue) {
+  const value = rawValue.trim();
+  if (!value) throw new Error("Role is empty.");
+
+  if (/^\d+$/.test(value)) {
+    const role = Number(value);
+    if (role < 1 || role >= ROLE_NAMES.length) {
+      throw new Error(`Invalid role number: ${value}`);
+    }
+    return role;
+  }
+
+  const idx = ROLE_NAMES.findIndex((name) => name.toLowerCase() === value.toLowerCase());
+  if (idx <= 0) throw new Error(`Invalid role name: ${value}`);
+  return idx;
+}
+
+function parseBatchAssignments(inputText) {
+  const lines = inputText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+  if (lines.length === 0) throw new Error("No assignments provided.");
+
+  return lines.map((line, index) => {
+    const parts = line.split(",").map((part) => part.trim());
+    if (parts.length !== 2) {
+      throw new Error(`Line ${index + 1}: expected format address,role`);
+    }
+
+    const [address, roleRaw] = parts;
+    if (!ethers.isAddress(address)) {
+      throw new Error(`Line ${index + 1}: invalid address ${address}`);
+    }
+
+    const role = parseRoleValue(roleRaw);
+    return { address, role, lineNumber: index + 1 };
+  });
 }
 
 async function refreshRole() {
@@ -156,6 +199,21 @@ async function verifyProduct() {
   );
 }
 
+async function assignRolesBatch() {
+  const assignments = parseBatchAssignments(el.batchAssignments.value);
+  log(`Batch role assignment started: ${assignments.length} entries`);
+
+  for (const item of assignments) {
+    log(`Assigning line ${item.lineNumber}: ${item.address} -> ${ROLE_NAMES[item.role]} (${item.role})`);
+    await sendTx(
+      state.contract.assignRole(item.address, item.role),
+      `assignRole line ${item.lineNumber}`
+    );
+  }
+
+  log("Batch role assignment completed.");
+}
+
 async function loadProductAndHistory() {
   const productId = toBigInt(el.queryProductId.value);
   const p = await state.contract.getProduct(productId);
@@ -190,6 +248,7 @@ async function loadProductAndHistory() {
 function wireActions() {
   el.connectBtn.addEventListener("click", () => withError(connectWallet));
   el.loadBtn.addEventListener("click", () => withError(loadContract));
+  el.assignBatchBtn.addEventListener("click", () => withError(assignRolesBatch));
   el.registerBtn.addEventListener("click", () => withError(registerProduct));
   el.transferBtn.addEventListener("click", () => withError(transferCustody));
   el.statusBtn.addEventListener("click", () => withError(updateStatus));

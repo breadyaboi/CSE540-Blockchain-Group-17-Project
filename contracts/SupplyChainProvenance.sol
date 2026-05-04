@@ -67,6 +67,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         string calldata metadataHash
     ) external override {
         require(roles[msg.sender] == Role.Producer, "Only producer");
+        require(productId != 0, "Invalid product ID");
         require(!products[productId].exists, "Duplicate product");
         require(bytes(metadataHash).length > 0, "Metadata required");
 
@@ -104,7 +105,10 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
 
         require(msg.sender == p.currentCustodian, "Only current custodian");
         require(newCustodian != address(0), "Invalid custodian");
+        require(newCustodian != p.currentCustodian, "Already current custodian");
         require(roles[newCustodian] != Role.None, "Unassigned recipient");
+        require(bytes(details).length > 0, "Transfer details required");
+        require(p.status != ProductStatus.Verified, "Product already verified");
 
         address previousCustodian = p.currentCustodian;
         p.currentCustodian = newCustodian;
@@ -133,6 +137,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         Product storage p = products[productId];
 
         require(msg.sender == p.currentCustodian, "Only current custodian");
+        require(bytes(details).length > 0, "Status details required");
         require(_isValidTransition(p.status, newStatus), "Invalid transition");
 
         p.status = newStatus;
@@ -156,6 +161,7 @@ contract SupplyChainProvenance is ISupplyChainProvenance {
         string calldata details
     ) external override productExists(productId) {
         require(roles[msg.sender] == Role.Regulator, "Only regulator");
+        require(bytes(details).length > 0, "Verification details required");
         require(
             products[productId].status == ProductStatus.Delivered,
             "Must be delivered first"

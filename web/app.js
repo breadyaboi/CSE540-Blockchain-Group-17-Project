@@ -12,6 +12,7 @@ const state = {
   abi: null,
   bytecode: null,
   quickAccounts: [],
+  walletEventsBound: false,
 };
 
 const el = {
@@ -199,6 +200,10 @@ async function connectWallet() {
   const label = mode === "metamask" ? "MetaMask" : "RPC wallet";
   el.walletStatus.textContent = `Wallet: ${short(state.account)} via ${label}`;
   log(`Connected ${label} ${state.account}`);
+
+  if (mode === "metamask") {
+    bindWalletEvents();
+  }
 }
 
 async function loadContract() {
@@ -222,6 +227,39 @@ async function deployContract() {
   el.contractAddress.value = deployedAddress;
   log(`deploy confirmed: ${deployedAddress}`);
   await loadContract();
+}
+
+async function reloadContractIfPresent() {
+  const address = el.contractAddress.value.trim();
+  if (!address || !ethers.isAddress(address)) return;
+  await loadContract();
+}
+
+function bindWalletEvents() {
+  if (!window.ethereum || state.walletEventsBound) return;
+  state.walletEventsBound = true;
+
+  window.ethereum.on("accountsChanged", async () => {
+    try {
+      if (el.connectionMode.value !== "metamask") return;
+      log("MetaMask account changed. Reconnecting...");
+      await connectWallet();
+      await reloadContractIfPresent();
+    } catch (error) {
+      log(`Error: ${error?.reason ?? error?.shortMessage ?? error?.message ?? String(error)}`);
+    }
+  });
+
+  window.ethereum.on("chainChanged", async () => {
+    try {
+      if (el.connectionMode.value !== "metamask") return;
+      log("MetaMask network changed. Reconnecting...");
+      await connectWallet();
+      await reloadContractIfPresent();
+    } catch (error) {
+      log(`Error: ${error?.reason ?? error?.shortMessage ?? error?.message ?? String(error)}`);
+    }
+  });
 }
 
 function renderStatusOptions() {

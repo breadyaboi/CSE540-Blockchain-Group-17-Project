@@ -87,16 +87,28 @@ function getHardhatQuickAccounts() {
 }
 
 function renderQuickAccountSelects() {
+  const defaultRoleByIndex = {
+    1: "Producer",
+    2: "Logistics",
+    3: "Warehouse",
+    4: "Retailer",
+    5: "Consumer",
+    6: "Regulator",
+  };
+
   state.quickAccounts = getHardhatQuickAccounts();
   for (const account of state.quickAccounts) {
+    const defaultRole = defaultRoleByIndex[account.index];
+    const roleSuffix = defaultRole ? ` [default: ${defaultRole}]` : "";
+
     const loginOpt = document.createElement("option");
     loginOpt.value = String(account.index);
-    loginOpt.textContent = `${account.label} (${short(account.address)})`;
+    loginOpt.textContent = `${account.label}${roleSuffix} (${short(account.address)})`;
     el.loginAccountSelect.appendChild(loginOpt);
 
     const toOpt = document.createElement("option");
     toOpt.value = String(account.index);
-    toOpt.textContent = `${account.label} (${short(account.address)})`;
+    toOpt.textContent = `${account.label}${roleSuffix} (${short(account.address)})`;
     el.txToAccountSelect.appendChild(toOpt);
   }
 }

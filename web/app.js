@@ -10,6 +10,7 @@ const state = {
   account: null,
   contract: null,
   abi: null,
+  bytecode: null,
   quickAccounts: [],
 };
 
@@ -20,6 +21,7 @@ const el = {
   loginAccountSelect: document.getElementById("loginAccountSelect"),
   contractAddress: document.getElementById("contractAddress"),
   connectBtn: document.getElementById("connectBtn"),
+  deployBtn: document.getElementById("deployBtn"),
   loadBtn: document.getElementById("loadBtn"),
   walletStatus: document.getElementById("walletStatus"),
   roleStatus: document.getElementById("roleStatus"),
@@ -63,7 +65,15 @@ async function loadAbi() {
   if (!res.ok) throw new Error("Cannot load ABI artifact. Run `npx hardhat compile` first.");
   const json = await res.json();
   state.abi = json.abi;
+  state.bytecode = json.bytecode;
   return state.abi;
+}
+
+async function loadArtifact() {
+  if (state.abi && state.bytecode) return { abi: state.abi, bytecode: state.bytecode };
+  await loadAbi();
+  if (!state.bytecode) throw new Error("Bytecode missing in artifact.");
+  return { abi: state.abi, bytecode: state.bytecode };
 }
 
 function short(address) {
@@ -199,6 +209,19 @@ async function loadContract() {
   state.contract = new ethers.Contract(address, abi, state.signer);
   await refreshRole();
   log(`Loaded contract ${address}`);
+}
+
+async function deployContract() {
+  if (!state.signer) throw new Error("Connect wallet first.");
+  const { abi, bytecode } = await loadArtifact();
+  const factory = new ethers.ContractFactory(abi, bytecode, state.signer);
+  const contract = await factory.deploy();
+  log(`deploy submitted: ${contract.deploymentTransaction().hash}`);
+  await contract.waitForDeployment();
+  const deployedAddress = await contract.getAddress();
+  el.contractAddress.value = deployedAddress;
+  log(`deploy confirmed: ${deployedAddress}`);
+  await loadContract();
 }
 
 function renderStatusOptions() {
@@ -349,6 +372,7 @@ function wireActions() {
   el.loginAccountSelect.addEventListener("change", onLoginAccountSelected);
   el.txToAccountSelect.addEventListener("change", onTxToAccountSelected);
   el.connectBtn.addEventListener("click", () => withError(connectWallet));
+  el.deployBtn.addEventListener("click", () => withError(deployContract));
   el.loadBtn.addEventListener("click", () => withError(loadContract));
   el.assignBatchBtn.addEventListener("click", () => withError(assignRolesBatch));
   el.assignDefaultBtn.addEventListener("click", () => withError(assignDefaultRoles));

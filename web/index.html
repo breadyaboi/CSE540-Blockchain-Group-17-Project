@@ -35,6 +35,12 @@
           <input id="privateKey" type="password" placeholder="0x..." />
         </div>
         <div>
+          <label for="loginAccountSelect">Quick Select Account (Hardhat account0-19)</label>
+          <select id="loginAccountSelect">
+            <option value="">Select account0-account19</option>
+          </select>
+        </div>
+        <div>
           <label for="contractAddress">Contract Address</label>
           <input id="contractAddress" placeholder="0x..." />
         </div>
@@ -70,6 +76,9 @@
           <div>
             <h3>Transfer Custody</h3>
             <input id="txProductId" placeholder="Product ID" />
+            <select id="txToAccountSelect">
+              <option value="">Select receiver account0-account19 (optional)</option>
+            </select>
             <input id="txTo" placeholder="New custodian address" />
             <input id="txMeta" placeholder="eventMetadata (ipfs://cid/...)" />
             <button id="transferBtn">Transfer</button>

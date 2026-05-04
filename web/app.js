@@ -10,12 +10,14 @@ const state = {
   account: null,
   contract: null,
   abi: null,
+  quickAccounts: [],
 };
 
 const el = {
   connectionMode: document.getElementById("connectionMode"),
   rpcUrl: document.getElementById("rpcUrl"),
   privateKey: document.getElementById("privateKey"),
+  loginAccountSelect: document.getElementById("loginAccountSelect"),
   contractAddress: document.getElementById("contractAddress"),
   connectBtn: document.getElementById("connectBtn"),
   loadBtn: document.getElementById("loadBtn"),
@@ -28,6 +30,7 @@ const el = {
   regMetadata: document.getElementById("regMetadata"),
   registerBtn: document.getElementById("registerBtn"),
   txProductId: document.getElementById("txProductId"),
+  txToAccountSelect: document.getElementById("txToAccountSelect"),
   txTo: document.getElementById("txTo"),
   txMeta: document.getElementById("txMeta"),
   transferBtn: document.getElementById("transferBtn"),
@@ -65,6 +68,44 @@ async function loadAbi() {
 
 function short(address) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function getHardhatQuickAccounts() {
+  const mnemonic = "test test test test test test test test test test test junk";
+  const accounts = [];
+  for (let i = 0; i < 20; i += 1) {
+    const path = `m/44'/60'/0'/0/${i}`;
+    const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, path);
+    accounts.push({
+      label: `account${i}`,
+      index: i,
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+    });
+  }
+  return accounts;
+}
+
+function renderQuickAccountSelects() {
+  state.quickAccounts = getHardhatQuickAccounts();
+  for (const account of state.quickAccounts) {
+    const loginOpt = document.createElement("option");
+    loginOpt.value = String(account.index);
+    loginOpt.textContent = `${account.label} (${short(account.address)})`;
+    el.loginAccountSelect.appendChild(loginOpt);
+
+    const toOpt = document.createElement("option");
+    toOpt.value = String(account.index);
+    toOpt.textContent = `${account.label} (${short(account.address)})`;
+    el.txToAccountSelect.appendChild(toOpt);
+  }
+}
+
+function updateConnectionModeUi() {
+  const isRpcMode = el.connectionMode.value === "rpc";
+  el.rpcUrl.disabled = !isRpcMode;
+  el.privateKey.disabled = !isRpcMode;
+  el.loginAccountSelect.disabled = !isRpcMode;
 }
 
 function parseRoleValue(rawValue) {
@@ -270,7 +311,31 @@ async function loadProductAndHistory() {
   log(`Loaded product ${productId.toString()} and ${history.length} history records`);
 }
 
+function onLoginAccountSelected() {
+  const raw = el.loginAccountSelect.value;
+  if (!raw) return;
+  const idx = Number(raw);
+  const account = state.quickAccounts[idx];
+  if (!account) return;
+  el.privateKey.value = account.privateKey;
+  if (!el.rpcUrl.value.trim()) el.rpcUrl.value = "http://127.0.0.1:8545";
+  log(`Selected ${account.label} for RPC login: ${account.address}`);
+}
+
+function onTxToAccountSelected() {
+  const raw = el.txToAccountSelect.value;
+  if (!raw) return;
+  const idx = Number(raw);
+  const account = state.quickAccounts[idx];
+  if (!account) return;
+  el.txTo.value = account.address;
+  log(`Transfer receiver set to ${account.label}: ${account.address}`);
+}
+
 function wireActions() {
+  el.connectionMode.addEventListener("change", updateConnectionModeUi);
+  el.loginAccountSelect.addEventListener("change", onLoginAccountSelected);
+  el.txToAccountSelect.addEventListener("change", onTxToAccountSelected);
   el.connectBtn.addEventListener("click", () => withError(connectWallet));
   el.loadBtn.addEventListener("click", () => withError(loadContract));
   el.assignBatchBtn.addEventListener("click", () => withError(assignRolesBatch));
@@ -294,6 +359,8 @@ async function withError(fn) {
   }
 }
 
+renderQuickAccountSelects();
 renderStatusOptions();
+updateConnectionModeUi();
 wireActions();
 log("UI loaded. Connect wallet to begin.");

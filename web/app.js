@@ -440,7 +440,7 @@ function wireActions() {
 
 async function withError(fn) {
   try {
-    if (!state.contract && fn !== connectWallet && fn !== loadContract) {
+    if (!state.contract && fn !== connectWallet && fn !== loadContract && fn !== deployContract) {
       throw new Error("Connect wallet and load contract first.");
     }
     await fn();

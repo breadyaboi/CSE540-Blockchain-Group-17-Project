@@ -23,6 +23,7 @@ const el = {
   roleStatus: document.getElementById("roleStatus"),
   batchAssignments: document.getElementById("batchAssignments"),
   assignBatchBtn: document.getElementById("assignBatchBtn"),
+  assignDefaultBtn: document.getElementById("assignDefaultBtn"),
   regProductId: document.getElementById("regProductId"),
   regMetadata: document.getElementById("regMetadata"),
   registerBtn: document.getElementById("registerBtn"),
@@ -214,6 +215,30 @@ async function assignRolesBatch() {
   log("Batch role assignment completed.");
 }
 
+async function assignDefaultRoles() {
+  if (!state.provider) throw new Error("Connect wallet first.");
+  const accounts = await state.provider.send("eth_accounts", []);
+  if (!Array.isArray(accounts) || accounts.length < 7) {
+    throw new Error("Need at least 7 unlocked accounts on this RPC (owner + 6 participants).");
+  }
+
+  const defaults = [
+    { address: accounts[1], role: 1, label: "Producer" },
+    { address: accounts[2], role: 2, label: "Logistics" },
+    { address: accounts[3], role: 3, label: "Warehouse" },
+    { address: accounts[4], role: 4, label: "Retailer" },
+    { address: accounts[5], role: 5, label: "Consumer" },
+    { address: accounts[6], role: 7, label: "Regulator" },
+  ];
+
+  log("Assigning default roles to accounts #1-#6...");
+  for (const item of defaults) {
+    log(`Assigning ${item.label}: ${item.address}`);
+    await sendTx(state.contract.assignRole(item.address, item.role), `assignRole ${item.label}`);
+  }
+  log("Default role assignment completed.");
+}
+
 async function loadProductAndHistory() {
   const productId = toBigInt(el.queryProductId.value);
   const p = await state.contract.getProduct(productId);
@@ -249,6 +274,7 @@ function wireActions() {
   el.connectBtn.addEventListener("click", () => withError(connectWallet));
   el.loadBtn.addEventListener("click", () => withError(loadContract));
   el.assignBatchBtn.addEventListener("click", () => withError(assignRolesBatch));
+  el.assignDefaultBtn.addEventListener("click", () => withError(assignDefaultRoles));
   el.registerBtn.addEventListener("click", () => withError(registerProduct));
   el.transferBtn.addEventListener("click", () => withError(transferCustody));
   el.statusBtn.addEventListener("click", () => withError(updateStatus));

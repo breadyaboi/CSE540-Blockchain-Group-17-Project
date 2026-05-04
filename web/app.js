@@ -191,6 +191,9 @@ async function connectWallet() {
     const privateKey = el.privateKey.value.trim();
     if (!rpcUrl) throw new Error("RPC URL is required for RPC mode.");
     if (!privateKey) throw new Error("Private key is required for RPC mode.");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+      throw new Error("Private key must be 0x + 64 hex characters.");
+    }
 
     state.provider = new ethers.JsonRpcProvider(rpcUrl);
     state.signer = new ethers.Wallet(privateKey, state.provider);
@@ -217,11 +220,18 @@ async function loadContract() {
 }
 
 async function deployContract() {
-  if (!state.signer) throw new Error("Connect wallet first.");
+  if (!state.signer) {
+    log("No active signer. Connecting first...");
+    await connectWallet();
+  }
   const { abi, bytecode } = await loadArtifact();
   const factory = new ethers.ContractFactory(abi, bytecode, state.signer);
+  log("Submitting deployment transaction...");
   const contract = await factory.deploy();
-  log(`deploy submitted: ${contract.deploymentTransaction().hash}`);
+  const deployTx = contract.deploymentTransaction();
+  if (deployTx?.hash) {
+    log(`deploy submitted: ${deployTx.hash}`);
+  }
   await contract.waitForDeployment();
   const deployedAddress = await contract.getAddress();
   el.contractAddress.value = deployedAddress;
@@ -233,6 +243,12 @@ async function reloadContractIfPresent() {
   const address = el.contractAddress.value.trim();
   if (!address || !ethers.isAddress(address)) return;
   await loadContract();
+}
+
+async function reconnectAndReloadForRpcMode() {
+  if (el.connectionMode.value !== "rpc") return;
+  await connectWallet();
+  await reloadContractIfPresent();
 }
 
 function bindWalletEvents() {
@@ -393,6 +409,7 @@ function onLoginAccountSelected() {
   el.privateKey.value = account.privateKey;
   if (!el.rpcUrl.value.trim()) el.rpcUrl.value = "http://127.0.0.1:8545";
   log(`Selected ${account.label} for RPC login: ${account.address}`);
+  withError(reconnectAndReloadForRpcMode);
 }
 
 function onTxToAccountSelected() {
